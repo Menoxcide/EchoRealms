@@ -1,0 +1,9 @@
+{
+  "name": "Lurking Horror",
+  "speed": 2.2,
+  "attack": 14,
+  "level": 6,
+  "exp": 120,
+  "loot": ["horror tentacle", "lurking eye", "dark ink"],
+  "hp": 100
+}

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="150" height="150" tilewidth="32" tileheight="32" infinite="0" nextlayerid="2" nextobjectid="1">
+ <tileset firstgid="1" name="tileset" tilewidth="32" tileheight="32" tilecount="6080" columns="64">
+  <image source="../tileset.png" trans="ff00ff" width="2048" height="3040"/>
+  <tile id="0">
+   <animation>
+    <frame tileid="6017" duration="100"/>
+    <frame tileid="6018" duration="100"/>
+    <frame tileid="6019" duration="100"/>
+   </animation>
+  </tile>
+ </tileset>
+ <tileset firstgid="6081" name="tileset" tilewidth="32" tileheight="32" tilecount="6080" columns="64">
+  <image source="../tileset.png" trans="ff00ff" width="2048" height="3040"/>
+ </tileset>
+ <layer id="1" name="Tile Layer 1" width="150" height="150">
+  <data encoding="base64" compression="zlib">
+   eJzt2bEJgEAMBVALXeLcwD0FsbqtBAsbF7IXERExh77iFel+8SGB5KaqMgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABxYuvgMAFCa1X7kgj7FZ+B/Br0DCjPv7qYxnc8Ab3GvE6lu4zPwcTrGTfYjAMCzJn9lAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIDibL+HLCE=
+  </data>
+ </layer>
+</map>

@@ -1,0 +1,9 @@
+{
+  "name": "Adder",
+  "speed": 2.0,
+  "attack": 5,
+  "level": 1,
+  "exp": 15,
+  "loot": ["snake fang", "venom sac", "scale"],
+  "hp": 20
+}

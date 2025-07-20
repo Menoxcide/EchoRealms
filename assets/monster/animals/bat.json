@@ -1,0 +1,9 @@
+{
+  "name": "Bat",
+  "speed": 3.0,
+  "attack": 3,
+  "level": 1,
+  "exp": 10,
+  "loot": ["bat wing", "echolocation organ", "guano"],
+  "hp": 20
+}

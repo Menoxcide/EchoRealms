@@ -1,0 +1,9 @@
+{
+  "name": "Worldbinder",
+  "speed": 1.0,
+  "attack": 30,
+  "level": 10,
+  "exp": 300,
+  "loot": ["binding chain", "world stone", "binder's heart"],
+  "hp": 250
+}

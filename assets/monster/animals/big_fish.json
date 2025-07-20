@@ -1,0 +1,9 @@
+{
+  "name": "Big Fish",
+  "speed": 2.0,
+  "attack": 8,
+  "level": 3,
+  "exp": 40,
+  "loot": ["fish scale", "fin", "fish bone"],
+  "hp": 60
+}

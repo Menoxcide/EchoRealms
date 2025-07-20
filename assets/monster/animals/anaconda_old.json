@@ -1,0 +1,9 @@
+{
+  "name": "Anaconda (Old)",
+  "speed": 1.6,
+  "attack": 12,
+  "level": 5,
+  "exp": 100,
+  "loot": ["faded anaconda skin", "weak muscle", "worn fang"],
+  "hp": 130
+}

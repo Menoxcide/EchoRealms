@@ -1,0 +1,9 @@
+{
+  "name": "Death Ooze (Old)",
+  "speed": 0.5,
+  "attack": 9,
+  "level": 3,
+  "exp": 50,
+  "loot": ["aged death slime", "old ooze toxin", "faded necrotic fluid"],
+  "hp": 60
+}

@@ -1,0 +1,9 @@
+{
+  "name": "Ooze (New)",
+  "speed": 0.7,
+  "attack": 7,
+  "level": 2,
+  "exp": 25,
+  "loot": ["fresh ooze", "slime droplet", "viscous matter"],
+  "hp": 35
+}

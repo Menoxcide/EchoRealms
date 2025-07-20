@@ -1,0 +1,9 @@
+{
+  "name": "Basilisk",
+  "speed": 2.5,
+  "attack": 20,
+  "level": 8,
+  "exp": 200,
+  "loot": ["basilisk eye", "petrifying gaze", "legendary scale"],
+  "hp": 200
+}

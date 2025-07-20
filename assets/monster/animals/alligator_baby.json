@@ -1,0 +1,9 @@
+{
+  "name": "Baby Alligator",
+  "speed": 1.5,
+  "attack": 6,
+  "level": 2,
+  "exp": 30,
+  "loot": ["small hide", "tiny teeth", "young reptile meat"],
+  "hp": 40
+}

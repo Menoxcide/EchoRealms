@@ -1,0 +1,9 @@
+{
+  "name": "Apocalypse Crab",
+  "speed": 1.5,
+  "attack": 18,
+  "level": 7,
+  "exp": 150,
+  "loot": ["crab claw", "doom shell", "apocalyptic pearl"],
+  "hp": 120
+}

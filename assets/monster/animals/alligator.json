@@ -1,0 +1,9 @@
+{
+  "name": "Alligator",
+  "speed": 1.2,
+  "attack": 12,
+  "level": 4,
+  "exp": 80,
+  "loot": ["alligator hide", "sharp teeth", "reptile meat"],
+  "hp": 100
+}

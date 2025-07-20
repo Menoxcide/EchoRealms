@@ -1,0 +1,9 @@
+{
+  "name": "Ooze (Old)",
+  "speed": 0.6,
+  "attack": 6,
+  "level": 1,
+  "exp": 20,
+  "loot": ["stale ooze", "dried slime", "hardened matter"],
+  "hp": 30
+}

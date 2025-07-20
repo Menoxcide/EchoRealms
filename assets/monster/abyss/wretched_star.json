@@ -1,0 +1,9 @@
+{
+  "name": "Wretched Star",
+  "speed": 2.5,
+  "attack": 12,
+  "level": 6,
+  "exp": 110,
+  "loot": ["wretched fragment", "star tear", "cursed light"],
+  "hp": 90
+}

@@ -1,0 +1,9 @@
+{
+  "name": "Azure Jelly (Old)",
+  "speed": 0.9,
+  "attack": 5,
+  "level": 2,
+  "exp": 35,
+  "loot": ["faded azure gel", "old jelly nucleus", "dull blue essence"],
+  "hp": 40
+}

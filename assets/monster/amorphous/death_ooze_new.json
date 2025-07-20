@@ -1,0 +1,9 @@
+{
+  "name": "Death Ooze (New)",
+  "speed": 0.6,
+  "attack": 10,
+  "level": 4,
+  "exp": 60,
+  "loot": ["death slime", "ooze toxin", "necrotic fluid"],
+  "hp": 70
+}

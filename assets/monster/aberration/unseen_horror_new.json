@@ -1,0 +1,9 @@
+{
+  "name": "Unseen Horror (New)",
+  "speed": 2.0,
+  "attack": 15,
+  "level": 5,
+  "exp": 100,
+  "loot": ["shadow essence", "horror fang", "mysterious orb"],
+  "hp": 80
+}

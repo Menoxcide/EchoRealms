@@ -1,0 +1,9 @@
+{
+  "name": "Silver Star",
+  "speed": 3.0,
+  "attack": 10,
+  "level": 5,
+  "exp": 90,
+  "loot": ["silver fragment", "star dust", "cosmic energy"],
+  "hp": 70
+}

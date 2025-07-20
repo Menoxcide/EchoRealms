@@ -1,0 +1,9 @@
+{
+  "name": "Anaconda (New)",
+  "speed": 1.8,
+  "attack": 14,
+  "level": 6,
+  "exp": 120,
+  "loot": ["anaconda skin", "constrictor muscle", "large fang"],
+  "hp": 150
+}

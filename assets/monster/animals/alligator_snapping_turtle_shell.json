@@ -1,0 +1,9 @@
+{
+  "name": "Alligator Snapping Turtle Shell",
+  "speed": 0.5,
+  "attack": 10,
+  "level": 3,
+  "exp": 50,
+  "loot": ["shell fragment", "turtle bone", "protective plate"],
+  "hp": 80
+}

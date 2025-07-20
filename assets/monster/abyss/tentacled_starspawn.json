@@ -1,0 +1,9 @@
+{
+  "name": "Tentacled Starspawn",
+  "speed": 1.7,
+  "attack": 16,
+  "level": 7,
+  "exp": 140,
+  "loot": ["tentacle", "starspawn scale", "eldritch blood"],
+  "hp": 130
+}

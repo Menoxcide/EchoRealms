@@ -1,0 +1,9 @@
+{
+  "name": "Starcursed Mass",
+  "speed": 0.8,
+  "attack": 25,
+  "level": 9,
+  "exp": 250,
+  "loot": ["cursed mass", "star curse", "void essence"],
+  "hp": 200
+}

@@ -1,0 +1,9 @@
+{
+  "name": "Ancient Zyme",
+  "speed": 1.2,
+  "attack": 20,
+  "level": 8,
+  "exp": 200,
+  "loot": ["zyme crystal", "abyssal shard", "elder scroll"],
+  "hp": 150
+}

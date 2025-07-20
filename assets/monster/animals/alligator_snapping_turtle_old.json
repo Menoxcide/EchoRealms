@@ -1,0 +1,9 @@
+{
+  "name": "Alligator Snapping Turtle (Old)",
+  "speed": 0.7,
+  "attack": 13,
+  "level": 4,
+  "exp": 85,
+  "loot": ["worn turtle shell", "old snapping jaw", "aged hide"],
+  "hp": 100
+}

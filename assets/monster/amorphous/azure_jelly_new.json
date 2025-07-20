@@ -1,0 +1,9 @@
+{
+  "name": "Azure Jelly (New)",
+  "speed": 1.0,
+  "attack": 6,
+  "level": 3,
+  "exp": 40,
+  "loot": ["azure gel", "jelly nucleus", "blue essence"],
+  "hp": 50
+}
