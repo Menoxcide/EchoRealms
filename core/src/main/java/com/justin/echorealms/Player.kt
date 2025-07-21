@@ -1,3 +1,4 @@
+// core/src/com/justin/echorealms/Player.kt
 package com.justin.echorealms
 
 import com.badlogic.gdx.Gdx
@@ -27,13 +28,14 @@ class Player(
     private val inventoryManager: InventoryManager,
     private val levelingSystem: LevelingSystem,
     private val assetManager: AssetManager,
-    private val mapManager: MapManager
+    private val mapManager: MapManager,
+    private val eventBus: EventBus
 ) {
     private val texture: Texture = if (assetManager.isLoaded("player/base/human_male.png")) {
         assetManager.get("player/base/human_male.png", Texture::class.java)
     } else {
         Gdx.app.error("Player", "Failed to load player/base/human_male.png, using default")
-        Texture(Gdx.files.internal("badlogic.jpg"))
+        assetManager.get("icons/control.png", Texture::class.java) // Use existing asset as fallback
     }
     val sprite = Sprite(texture).apply {
         setSize(width * 1.333f, height * 1.333f)
@@ -133,7 +135,8 @@ class Player(
             if (mapManager.isWalkable(nextTile.x.toInt(), nextTile.y.toInt()) && !monsterManager!!.isTileOccupied(nextTile.x.toInt(), nextTile.y.toInt())) {
                 setTargetTile(nextTile.x.toInt(), nextTile.y.toInt())
             } else {
-                movementManager.clearPath()
+                movementManager.clearPath() // Recalculate if blocked
+                Gdx.app.log("Player", "Path blocked, clearing and recalculating")
             }
         }
 
@@ -150,6 +153,7 @@ class Player(
                     movementManager.getCurrentPath().removeIndex(0)
                 }
                 moveProgress = 0f // Reset for next tile
+                eventBus.fire("playerMoved", playerTileX, playerTileY)
             } else {
                 playerX = MathUtils.lerp(playerX, targetX, moveProgress)
                 playerY = MathUtils.lerp(playerY, targetY, moveProgress)
@@ -157,6 +161,9 @@ class Player(
             walkTime += normalizedDelta * bobFrequency
             Gdx.app.log("Player", "Interpolating to ($playerX, $playerY), progress: $moveProgress")
         }
+
+        // New: Continuous direction update for DPAD hold
+        movementManager.updateContinuousDirection(this, normalizedDelta)
 
         attackCooldown = (attackCooldown - normalizedDelta).coerceAtLeast(0f)
     }

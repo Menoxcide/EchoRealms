@@ -1,8 +1,8 @@
+// core/src/main/java/com/justin/echorealms/GameInputHandler.kt
 package com.justin.echorealms
 
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.input.GestureDetector
-import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.utils.Timer
@@ -21,18 +21,22 @@ class GameInputHandler(
     private val monsterManager: MonsterManager,
     private val battleList: BattleList,
     private val chatWindow: ChatWindow,
-    private val pathFinder: PathFinder
+    private val pathFinder: PathFinder,
+    private val worldMap: WorldMap
 ) : GestureAdapter() {
     val gestureDetector = GestureDetector(this)
     private var isDraggingMinimap = false
     private var isDraggingBattleList = false
     private var isDraggingChatWindow = false
+    private var isDraggingWorldMap = false
     private var isResizingMinimap = false
     private var isResizingBattleList = false
     private var isResizingChatWindow = false
+    private var isResizingWorldMap = false
     private var minimapResizeCorner = ""
     private var battleListResizeCorner = ""
     private var chatWindowResizeCorner = ""
+    private var worldMapResizeCorner = ""
     private var touchDownTime = 0L
     private var touchDownX = 0f
     private var touchDownY = 0f
@@ -48,35 +52,45 @@ class GameInputHandler(
             Gdx.app.log("GameInputHandler", "Tap ignored: player is dead")
             return false
         }
-        Gdx.app.log("GameInputHandler", "Tap detected at screen ($x, $y), count: $count, button: $button")
-        if (isDraggingMinimap || isDraggingBattleList || isDraggingChatWindow || isResizingMinimap || isResizingBattleList || isResizingChatWindow) {
+        val screenY = Gdx.graphics.height - y
+        Gdx.app.log("GameInputHandler", "Tap detected at screen ($x, $screenY), count: $count, button: $button")
+        if (isDraggingMinimap || isDraggingBattleList || isDraggingChatWindow || isDraggingWorldMap || isResizingMinimap || isResizingBattleList || isResizingChatWindow || isResizingWorldMap) {
             Gdx.app.log("GameInputHandler", "Tap ignored: dragging or resizing in progress")
             return false
         }
-        val screenY = Gdx.graphics.height - y
         if ((Gdx.app.applicationListener as? MyGame)?.isOverUI(x, screenY) == true) {
             Gdx.app.log("GameInputHandler", "Tap ignored: over UI")
             return false
         }
         if (minimap.isInMinimap(x, screenY)) {
-            // Minimap click-to-move
-            val tileSize = minimap.size / minOf(mapManager.mapTileWidth, mapManager.mapTileHeight)
-            val tileX = floor((x - minimap.offsetX) / tileSize).toInt()
-            val tileY = floor((screenY - minimap.offsetY) / tileSize).toInt()
-            if (mapManager.isWalkable(tileX, tileY) && !monsterManager.isTileOccupied(tileX, tileY)) {
+            val minimapTileSize = minimap.getTileSize()
+            val tileX = floor((x - minimap.offsetX) / minimapTileSize + minimap.minTileX).toInt()
+            val tileY = floor((screenY - minimap.offsetY) / minimapTileSize + minimap.minTileY).toInt()
+            if (tileX in 0 until mapManager.mapTileWidth && tileY in 0 until mapManager.mapTileHeight) {
                 movementManager.clearPath()
-                val path = pathFinder.findPath(player.playerTileX, player.playerTileY, tileX, tileY, monsterManager)
+                val (validTileX, validTileY) = movementManager.findNearestWalkableTile(tileX, tileY)
+                if (validTileX == -1 || validTileY == -1) {
+                    Gdx.app.log("GameInputHandler", "No walkable tile found near minimap tile ($tileX, $tileY)")
+                    chatWindow.addMessage("No walkable tile near ($tileX, $tileY)", "General")
+                    return true
+                }
+                val path = pathFinder.findPath(player.playerTileX, player.playerTileY, validTileX, validTileY, monsterManager)
                 if (path.size > 0) {
                     movementManager.getCurrentPath().clear()
                     movementManager.getCurrentPath().addAll(path)
-                    player.setTargetTile(tileX, tileY)
-                    player.moveProgress = 0f // Reset interpolation
-                    (Gdx.app.applicationListener as? MyGame)?.moveDirection?.set(0f, 0f) // Clear DPAD
-                    Gdx.app.log("GameInputHandler", "Minimap tap initiated movement to tile ($tileX, $tileY)")
+                    player.setTargetTile(validTileX, validTileY)
+                    player.moveProgress = 0f
+                    (Gdx.app.applicationListener as? MyGame)?.moveDirection?.set(0f, 0f)
+                    Gdx.app.log("GameInputHandler", "Minimap tap initiated movement to tile ($validTileX, $validTileY)")
+                    chatWindow.addMessage("Moving to tile ($validTileX, $validTileY)", "General")
                     return true
                 } else {
-                    Gdx.app.log("GameInputHandler", "No valid path to minimap tile ($tileX, $tileY)")
+                    Gdx.app.log("GameInputHandler", "No valid path to minimap tile ($validTileX, $validTileY)")
+                    chatWindow.addMessage("No path to tile ($validTileX, $validTileY)", "General")
                 }
+            } else {
+                Gdx.app.log("GameInputHandler", "Minimap tap ignored: tile ($tileX, $tileY) out of bounds")
+                chatWindow.addMessage("Tile ($tileX, $tileY) out of bounds", "General")
             }
             return true
         }
@@ -84,7 +98,7 @@ class GameInputHandler(
         camera.unproject(touch)
         val tileX = floor(touch.x / tileSize).toInt()
         val tileY = floor((mapManager.mapPixelHeight - touch.y) / tileSize).toInt()
-        Gdx.app.log("GameInputHandler", "Tap mapped to tile ($tileX, $tileY)")
+        Gdx.app.log("GameInputHandler", "Tap mapped to tile ($tileX, $tileY), world coords (${touch.x}, ${touch.y})")
 
         var monsterClicked: Monster? = null
         monsterManager.getMonsters().forEach { monster ->
@@ -120,22 +134,32 @@ class GameInputHandler(
             return true
         }
 
-        if (mapManager.isWalkable(tileX, tileY) && !monsterManager.isTileOccupied(tileX, tileY) && camera.frustum.pointInFrustum(touch.x, touch.y, 0f)) {
+        if (tileX in 0 until mapManager.mapTileWidth && tileY in 0 until mapManager.mapTileHeight &&
+            camera.frustum.pointInFrustum(touch.x, touch.y, 0f)) {
             movementManager.clearPath()
-            val path = pathFinder.findPath(player.playerTileX, player.playerTileY, tileX, tileY, monsterManager)
+            val (validTileX, validTileY) = movementManager.findNearestWalkableTile(tileX, tileY)
+            if (validTileX == -1 || validTileY == -1) {
+                Gdx.app.log("GameInputHandler", "No walkable tile found near ($tileX, $tileY)")
+                chatWindow.addMessage("No walkable tile near ($tileX, $tileY)", "General")
+                return true
+            }
+            val path = pathFinder.findPath(player.playerTileX, player.playerTileY, validTileX, validTileY, monsterManager)
             if (path.size > 0) {
                 movementManager.getCurrentPath().clear()
                 movementManager.getCurrentPath().addAll(path)
-                player.setTargetTile(tileX, tileY)
-                player.moveProgress = 0f // Reset interpolation
-                (Gdx.app.applicationListener as? MyGame)?.moveDirection?.set(0f, 0f) // Clear DPAD
-                Gdx.app.log("GameInputHandler", "Initiated movement to tile ($tileX, $tileY)")
+                player.setTargetTile(validTileX, validTileY)
+                player.moveProgress = 0f
+                (Gdx.app.applicationListener as? MyGame)?.moveDirection?.set(0f, 0f)
+                Gdx.app.log("GameInputHandler", "Initiated movement to tile ($validTileX, $validTileY)")
+                chatWindow.addMessage("Moving to tile ($validTileX, $validTileY)", "General")
                 return true
             } else {
-                Gdx.app.log("GameInputHandler", "No valid path to tile ($tileX, $tileY)")
+                Gdx.app.log("GameInputHandler", "No valid path to tile ($validTileX, $validTileY)")
+                chatWindow.addMessage("No path to tile ($validTileX, $validTileY)", "General")
             }
         } else {
-            Gdx.app.log("GameInputHandler", "Tap ignored: tile ($tileX, $tileY) is unwalkable, occupied, or out of viewport")
+            Gdx.app.log("GameInputHandler", "Tap ignored: tile ($tileX, $tileY) is out of bounds or not in frustum")
+            chatWindow.addMessage("Cannot move to tile ($tileX, $tileY): out of bounds or not in frustum", "General")
         }
         longPressTask?.cancel()
         longPressTask = null
@@ -183,22 +207,23 @@ class GameInputHandler(
                 Gdx.app.log("GameInputHandler", "Started dragging chat window")
             }
             return true
+        } else if (worldMap.isInBounds(x, screenY)) {
+            if (worldMap.isInResizeCorner(x, screenY)) {
+                isResizingWorldMap = true
+                worldMapResizeCorner = worldMap.getResizeCorner(x, screenY)
+                Gdx.app.log("GameInputHandler", "Started resizing world map at corner: $worldMapResizeCorner")
+            } else {
+                isDraggingWorldMap = true
+                worldMap.startDragging(x, screenY)
+                Gdx.app.log("GameInputHandler", "Started dragging world map")
+            }
+            return true
         } else {
             touchDownTime = System.currentTimeMillis()
             touchDownX = x
             touchDownY = screenY
             lastPanX = x
             lastPanY = screenY
-            longPressTask = object : Timer.Task() {
-                override fun run() {
-                    if (System.currentTimeMillis() - touchDownTime >= longPressDuration * 1000 && !isDraggingMinimap && !isDraggingBattleList && !isDraggingChatWindow && !isResizingMinimap && !isResizingBattleList && !isResizingChatWindow && !(Gdx.app.applicationListener as? MyGame)?.isOverUI(touchDownX, Gdx.graphics.height - touchDownY)!!) {
-                        (Gdx.app.applicationListener as? MyGame)?.showDpad(touchDownX, touchDownY)
-                        Gdx.app.log("GameInputHandler", "Long press detected, showing DPAD at ($touchDownX, $touchDownY)")
-                    }
-                    longPressTask = null
-                }
-            }
-            Timer.schedule(longPressTask, longPressDuration)
             return false
         }
     }
@@ -223,6 +248,9 @@ class GameInputHandler(
         } else if (isDraggingChatWindow) {
             chatWindow.drag(x, screenY)
             return true
+        } else if (isDraggingWorldMap) {
+            worldMap.drag(x, screenY)
+            return true
         } else if (isResizingMinimap) {
             minimap.resize(minimapResizeCorner, deltaX, -deltaY)
             return true
@@ -231,6 +259,9 @@ class GameInputHandler(
             return true
         } else if (isResizingChatWindow) {
             chatWindow.resize(chatWindowResizeCorner, deltaX, -deltaY)
+            return true
+        } else if (isResizingWorldMap) {
+            worldMap.resize(worldMapResizeCorner, deltaX, -deltaY)
             return true
         }
         return false
@@ -257,6 +288,11 @@ class GameInputHandler(
             chatWindow.stopDragging()
             Gdx.app.log("GameInputHandler", "Stopped dragging chat window")
         }
+        if (isDraggingWorldMap) {
+            isDraggingWorldMap = false
+            worldMap.stopDragging()
+            Gdx.app.log("GameInputHandler", "Stopped dragging world map")
+        }
         if (isResizingMinimap) {
             isResizingMinimap = false
             Gdx.app.log("GameInputHandler", "Stopped resizing minimap")
@@ -269,9 +305,10 @@ class GameInputHandler(
             isResizingChatWindow = false
             Gdx.app.log("GameInputHandler", "Stopped resizing chat window")
         }
-        longPressTask?.cancel()
-        longPressTask = null
-        Gdx.app.log("GameInputHandler", "Canceled long press timer on pan stop")
+        if (isResizingWorldMap) {
+            isResizingWorldMap = false
+            Gdx.app.log("GameInputHandler", "Stopped resizing world map")
+        }
         return false
     }
 }

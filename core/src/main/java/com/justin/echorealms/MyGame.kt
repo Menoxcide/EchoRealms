@@ -1,3 +1,4 @@
+// core/src/com/justin/echorealms/MyGame.kt
 package com.justin.echorealms
 
 import com.badlogic.gdx.ApplicationAdapter
@@ -9,7 +10,6 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.g2d.BitmapFont
-import com.badlogic.gdx.maps.tiled.TiledMap
 import com.badlogic.gdx.maps.tiled.TmxMapLoader
 import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.scenes.scene2d.ui.Skin
@@ -19,11 +19,8 @@ import com.badlogic.gdx.scenes.scene2d.ui.Image
 import com.badlogic.gdx.scenes.scene2d.utils.DragListener
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import com.badlogic.gdx.scenes.scene2d.InputEvent
-import com.badlogic.gdx.input.GestureDetector
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType
-import com.badlogic.gdx.utils.Array
 import com.badlogic.gdx.math.Vector2
-import com.badlogic.gdx.math.Rectangle
 import com.badlogic.gdx.graphics.g2d.GlyphLayout
 import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.scenes.scene2d.ui.Touchpad
@@ -31,11 +28,11 @@ import com.badlogic.gdx.scenes.scene2d.ui.Touchpad.TouchpadStyle
 import com.badlogic.gdx.graphics.g2d.TextureRegion
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable
 import com.badlogic.gdx.scenes.scene2d.ui.Window
-import com.badlogic.gdx.utils.Timer
-import kotlin.math.sign
+import com.badlogic.gdx.scenes.scene2d.ui.TextButton
+import kotlin.math.sign // Added import to resolve sign function
 
 class MyGame : ApplicationAdapter() {
-    private lateinit var eventBus: EventBus
+    lateinit var eventBus: EventBus
     private lateinit var modLoader: ModLoader
     private lateinit var mapManager: MapManager
     private lateinit var player: Player
@@ -52,6 +49,8 @@ class MyGame : ApplicationAdapter() {
     private lateinit var combatManager: CombatManager
     private lateinit var movementManager: MovementManager
     lateinit var battleList: BattleList
+    private lateinit var fogOfWar: FogOfWar
+    private lateinit var worldMap: WorldMap
     private var lastPlayerX = 0
     private var lastPlayerY = 0
     val assetManager = AssetManager()
@@ -61,24 +60,29 @@ class MyGame : ApplicationAdapter() {
     private var isInventoryOpen = false
     private var isCharacterSheetOpen = false
     private var isDeadOverlayVisible = false
+    private var isWorldMapOpen = false
+    private var isDebugOverlayVisible = false // New debug overlay toggle
     private lateinit var chatWindow: ChatWindow
     private lateinit var gameWorldStage: Stage
     private lateinit var uiStage: Stage
     private lateinit var uiCamera: OrthographicCamera
     private var touchpad: Touchpad? = null
-    private var dpadVisible = false
-    private var dpadLastTouchTime = 0L
-    private val dpadTimeout = 5000L
+    private var dpadVisible = true // Always visible now
+    private var dpadLocked = false // New lock state
     private lateinit var skin: Skin
     var moveDirection = Vector2(0f, 0f)
     private lateinit var inventoryWindow: Window
     private lateinit var characterWindow: Window
+    private lateinit var worldMapButton: TextButton
     private lateinit var chatTable: Table
     private lateinit var inventoryIcon: Image
     private lateinit var characterIcon: Image
     private var dpadMoveTimer = 0f
-    private val dpadMoveInterval = 0.25f
+    private val dpadMoveInterval = 0.15f // Snappier
     private val uiBoundaryPadding = 10f
+    private lateinit var dpadToggleButton: TextButton // New toggle
+    private lateinit var dpadLockButton: TextButton // New lock button
+    private lateinit var debugToggleButton: TextButton // New debug toggle
 
     override fun create() {
         eventBus = EventBus()
@@ -119,8 +123,8 @@ class MyGame : ApplicationAdapter() {
         inventoryWindow.isVisible = false
         inventoryWindow.addListener(object : DragListener() {
             override fun drag(event: InputEvent?, x: Float, y: Float, pointer: Int) {
-                val newX = (inventoryWindow.getX() + x - inventoryWindow.width / 2).coerceIn(0f, Gdx.graphics.width - inventoryWindow.width)
-                val newY = (inventoryWindow.getY() + y - inventoryWindow.height / 2).coerceIn(0f, Gdx.graphics.height - inventoryWindow.height)
+                val newX = (inventoryWindow.getX() + x - inventoryWindow.width / 2).coerceIn(0f, Gdx.graphics.width.toFloat() - inventoryWindow.width)
+                val newY = (inventoryWindow.getY() + y - inventoryWindow.height / 2).coerceIn(0f, Gdx.graphics.height.toFloat() - inventoryWindow.height)
                 inventoryWindow.setPosition(newX, newY)
                 Gdx.app.log("MyGame", "Inventory window dragged to ($newX, $newY)")
             }
@@ -135,8 +139,8 @@ class MyGame : ApplicationAdapter() {
         characterWindow.isVisible = false
         characterWindow.addListener(object : DragListener() {
             override fun drag(event: InputEvent?, x: Float, y: Float, pointer: Int) {
-                val newX = (characterWindow.getX() + x - characterWindow.width / 2).coerceIn(0f, Gdx.graphics.width - characterWindow.width)
-                val newY = (characterWindow.getY() + y - characterWindow.height / 2).coerceIn(0f, Gdx.graphics.height - characterWindow.height)
+                val newX = (characterWindow.getX() + x - characterWindow.width / 2).coerceIn(0f, Gdx.graphics.width.toFloat() - characterWindow.width)
+                val newY = (characterWindow.getY() + y - characterWindow.height / 2).coerceIn(0f, Gdx.graphics.height.toFloat() - characterWindow.height)
                 characterWindow.setPosition(newX, newY)
                 Gdx.app.log("MyGame", "Character window dragged to ($newX, $newY)")
             }
@@ -145,7 +149,7 @@ class MyGame : ApplicationAdapter() {
 
         inventoryIcon = Image(assetManager.get("icons/inventory.png", Texture::class.java))
         inventoryIcon.color = Color(1f, 1f, 1f, 0.5f)
-        inventoryIcon.setPosition(10f, Gdx.graphics.height - 100f * 2f - 10f)
+        inventoryIcon.setPosition(10f, Gdx.graphics.height.toFloat() - 100f * 2f - 10f)
         inventoryIcon.setSize(100f * 2f, 100f * 2f)
         inventoryIcon.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
@@ -153,15 +157,15 @@ class MyGame : ApplicationAdapter() {
                 inventoryWindow.isVisible = isInventoryOpen
                 inventoryIcon.color.a = if (isInventoryOpen) 1f else 0.5f
                 if (isInventoryOpen) {
-                    inventoryWindow.setPosition((Gdx.graphics.width - inventoryWindow.width) / 2f, (Gdx.graphics.height - inventoryWindow.height) / 2f)
+                    inventoryWindow.setPosition((Gdx.graphics.width.toFloat() - inventoryWindow.width) / 2f, (Gdx.graphics.height.toFloat() - inventoryWindow.height) / 2f)
                 }
                 Gdx.app.log("MyGame", "Inventory icon clicked, isInventoryOpen: $isInventoryOpen")
             }
         })
         inventoryIcon.addListener(object : DragListener() {
             override fun drag(event: InputEvent?, x: Float, y: Float, pointer: Int) {
-                val newX = (inventoryIcon.getX() + x - inventoryIcon.width / 2).coerceIn(0f, Gdx.graphics.width - inventoryIcon.width)
-                val newY = (inventoryIcon.getY() + y - inventoryIcon.height / 2).coerceIn(0f, Gdx.graphics.height - inventoryIcon.height)
+                val newX = (inventoryIcon.getX() + x - inventoryIcon.width / 2).coerceIn(0f, Gdx.graphics.width.toFloat() - inventoryIcon.width)
+                val newY = (inventoryIcon.getY() + y - inventoryIcon.height / 2).coerceIn(0f, Gdx.graphics.height.toFloat() - inventoryIcon.height)
                 inventoryIcon.setPosition(newX, newY)
                 Gdx.app.log("MyGame", "Inventory icon dragged to ($newX, $newY)")
             }
@@ -170,7 +174,7 @@ class MyGame : ApplicationAdapter() {
 
         characterIcon = Image(assetManager.get("icons/character.png", Texture::class.java))
         characterIcon.color = Color(1f, 1f, 1f, 0.5f)
-        characterIcon.setPosition(10f + 100f * 2f + 20f, Gdx.graphics.height - 100f * 2f - 10f)
+        characterIcon.setPosition(10f + 100f * 2f + 20f, Gdx.graphics.height.toFloat() - 100f * 2f - 10f)
         characterIcon.setSize(100f * 2f, 100f * 2f)
         characterIcon.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
@@ -178,22 +182,51 @@ class MyGame : ApplicationAdapter() {
                 characterWindow.isVisible = isCharacterSheetOpen
                 characterIcon.color.a = if (isCharacterSheetOpen) 1f else 0.5f
                 if (isCharacterSheetOpen) {
-                    characterWindow.setPosition((Gdx.graphics.width - characterWindow.width) / 2f, (Gdx.graphics.height - characterWindow.height) / 2f)
+                    characterWindow.setPosition((Gdx.graphics.width.toFloat() - characterWindow.width) / 2f, (Gdx.graphics.height.toFloat() - characterWindow.height) / 2f)
                 }
                 Gdx.app.log("MyGame", "Character icon clicked, isCharacterSheetOpen: $isCharacterSheetOpen")
             }
         })
         characterIcon.addListener(object : DragListener() {
             override fun drag(event: InputEvent?, x: Float, y: Float, pointer: Int) {
-                val newX = (characterIcon.getX() + x - characterIcon.width / 2).coerceIn(0f, Gdx.graphics.width - characterIcon.width)
-                val newY = (characterIcon.getY() + y - characterIcon.height / 2).coerceIn(0f, Gdx.graphics.height - characterIcon.height)
+                val newX = (characterIcon.getX() + x - characterIcon.width / 2).coerceIn(0f, Gdx.graphics.width.toFloat() - characterIcon.width)
+                val newY = (characterIcon.getY() + y - characterIcon.height / 2).coerceIn(0f, Gdx.graphics.height.toFloat() - characterIcon.height)
                 characterIcon.setPosition(newX, newY)
                 Gdx.app.log("MyGame", "Character icon dragged to ($newX, $newY)")
             }
         })
         uiStage.addActor(characterIcon)
 
-        player = Player(mapManager.tileSize, (mapManager.mapTileWidth / 2f), (mapManager.mapTileHeight / 2f), floatingTextManager, null, inventoryManager, levelingSystem, assetManager, mapManager)
+        worldMapButton = TextButton("World Map", skin)
+        worldMapButton.color = Color(1f, 1f, 1f, 0.5f)
+        worldMapButton.setPosition(10f + 100f * 4f + 40f, Gdx.graphics.height.toFloat() - 100f * 2f - 10f)
+        worldMapButton.setSize(100f * 2f, 100f * 2f)
+        worldMapButton.addListener(object : ClickListener() {
+            override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                isWorldMapOpen = !isWorldMapOpen
+                worldMap.window.isVisible = isWorldMapOpen
+                worldMapButton.color.a = if (isWorldMapOpen) 1f else 0.5f
+                if (isWorldMapOpen) {
+                    worldMap.window.setPosition((Gdx.graphics.width.toFloat() - worldMap.sizeX) / 2f, (Gdx.graphics.height.toFloat() - worldMap.sizeY) / 2f)
+                }
+                Gdx.app.log("MyGame", "World map button clicked, isWorldMapOpen: $isWorldMapOpen")
+            }
+        })
+        uiStage.addActor(worldMapButton)
+
+        debugToggleButton = TextButton("Toggle Debug", skin)
+        debugToggleButton.setPosition(20f, Gdx.graphics.height.toFloat() - 150f)
+        debugToggleButton.setSize(200f, 60f)
+        debugToggleButton.addListener(object : ClickListener() {
+            override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                isDebugOverlayVisible = !isDebugOverlayVisible
+                debugToggleButton.label.setText(if (isDebugOverlayVisible) "Hide Debug" else "Show Debug")
+                Gdx.app.log("MyGame", "Debug overlay toggled: $isDebugOverlayVisible")
+            }
+        })
+        uiStage.addActor(debugToggleButton)
+
+        player = Player(mapManager.tileSize, (mapManager.mapTileWidth / 2f), (mapManager.mapTileHeight / 2f), floatingTextManager, null, inventoryManager, levelingSystem, assetManager, mapManager, eventBus)
 
         monsterManager = MonsterManager(mapManager, player, eventBus, pathFinder, floatingTextManager, assetManager, cameraManager, mapManager)
         monsterManager.loadMonsters()
@@ -215,18 +248,20 @@ class MyGame : ApplicationAdapter() {
         uiStage.addActor(chatTable)
         combatManager = CombatManager(player, monsterManager, floatingTextManager, inventoryManager, chatWindow)
 
-        minimap = Minimap(mapManager, player)
+        minimap = Minimap(mapManager, player, cameraManager)
+        fogOfWar = FogOfWar(mapManager, player)
+        worldMap = WorldMap(mapManager, player, skin, fogOfWar)
         battleList = BattleList(monsterManager, player, uiCamera)
 
-        inputHandler = GameInputHandler(cameraManager.camera, mapManager.tileSize, player, movementManager, minimap, mapManager, monsterManager, battleList, chatWindow, pathFinder)
-        val multiplexer = com.badlogic.gdx.InputMultiplexer(uiStage, inputHandler.gestureDetector, gameWorldStage)
+        inputHandler = GameInputHandler(cameraManager.camera, mapManager.tileSize, player, movementManager, minimap, mapManager, monsterManager, battleList, chatWindow, pathFinder, worldMap)
+        val multiplexer = com.badlogic.gdx.InputMultiplexer(uiStage, gameWorldStage, inputHandler.gestureDetector)
         Gdx.input.inputProcessor = multiplexer
 
         mainViewport = ScreenViewport(cameraManager.camera)
 
-        minimap.offsetX = Gdx.graphics.width - minimap.size - 10f
-        minimap.offsetY = Gdx.graphics.height - minimap.size - 10f
-        battleList.offsetX = Gdx.graphics.width - battleList.size - 10f
+        minimap.offsetX = Gdx.graphics.width.toFloat() - minimap.size - 10f
+        minimap.offsetY = Gdx.graphics.height.toFloat() - minimap.size - 10f
+        battleList.offsetX = Gdx.graphics.width.toFloat() - battleList.size - 10f
         battleList.offsetY = minimap.offsetY - battleList.size - 10f
 
         gameWorldBatch = SpriteBatch()
@@ -235,30 +270,54 @@ class MyGame : ApplicationAdapter() {
 
         lastPlayerX = player.playerTileX
         lastPlayerY = player.playerTileY
+
+        val touchpadStyle = TouchpadStyle()
+        touchpadStyle.background = TextureRegionDrawable(TextureRegion(assetManager.get("icons/control.png", Texture::class.java)))
+        touchpadStyle.knob = null
+        touchpad = Touchpad(10f, touchpadStyle)
+        touchpad!!.setBounds(20f, 20f, 300f, 300f)
+        touchpad!!.color = Color(1f, 1f, 1f, 0.8f)
+        uiStage.addActor(touchpad)
+        touchpad!!.addListener(object : DragListener() {
+            override fun drag(event: InputEvent?, x: Float, y: Float, pointer: Int) {
+                if (dpadLocked) return
+                if (event?.type == InputEvent.Type.touchDragged && pointer == 0) {
+                    val newX = (touchpad!!.getX() + x - touchpad!!.width / 2).coerceIn(0f, Gdx.graphics.width.toFloat() - touchpad!!.width)
+                    val newY = (touchpad!!.getY() + y - touchpad!!.height / 2).coerceIn(0f, Gdx.graphics.height.toFloat() - touchpad!!.height)
+                    touchpad!!.setPosition(newX, newY)
+                    Gdx.app.log("MyGame", "DPAD dragged to ($newX, $newY)")
+                }
+            }
+        })
+
+        dpadToggleButton = TextButton("Toggle DPAD", skin)
+        dpadToggleButton.setPosition(20f, Gdx.graphics.height.toFloat() - 50f)
+        dpadToggleButton.setSize(200f, 60f)
+        dpadToggleButton.addListener(object : ClickListener() {
+            override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                dpadVisible = !dpadVisible
+                touchpad!!.isVisible = dpadVisible
+                Gdx.app.log("MyGame", "DPAD toggled: $dpadVisible")
+            }
+        })
+        uiStage.addActor(dpadToggleButton)
+
+        dpadLockButton = TextButton("Lock DPAD", skin)
+        dpadLockButton.setPosition(20f, Gdx.graphics.height.toFloat() - 100f)
+        dpadLockButton.setSize(200f, 60f)
+        dpadLockButton.addListener(object : ClickListener() {
+            override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                dpadLocked = !dpadLocked
+                dpadLockButton.label.setText(if (dpadLocked) "Unlock DPAD" else "Lock DPAD")
+                Gdx.app.log("MyGame", "DPAD lock toggled: $dpadLocked")
+            }
+        })
+        uiStage.addActor(dpadLockButton)
     }
 
     fun clearPlayerPath() {
         movementManager.clearPath()
         Gdx.app.log("MyGame", "Cleared player movement path")
-    }
-
-    public fun showDpad(screenX: Float, screenY: Float) {
-        if (!dpadVisible && !isOverUI(screenX, Gdx.graphics.height - screenY)) {
-            dpadVisible = true
-            dpadLastTouchTime = System.currentTimeMillis()
-            val touchpadStyle = TouchpadStyle()
-            touchpadStyle.background = TextureRegionDrawable(TextureRegion(assetManager.get("icons/control.png", Texture::class.java)))
-            touchpadStyle.knob = null
-            touchpad = Touchpad(10f, touchpadStyle)
-            touchpad!!.setBounds(
-                (screenX - 200f).coerceIn(0f, Gdx.graphics.width - 400f),
-                (screenY - 200f).coerceIn(0f, Gdx.graphics.height - 400f),
-                400f, 400f
-            )
-            touchpad!!.color = Color(1f, 1f, 1f, 1f)
-            uiStage.addActor(touchpad)
-            Gdx.app.log("MyGame", "DPAD shown at ($screenX, $screenY), size (400x400)")
-        }
     }
 
     public fun isOverUI(x: Float, y: Float): Boolean {
@@ -281,47 +340,38 @@ class MyGame : ApplicationAdapter() {
                 y in (inventoryIcon.getY() - uiBoundaryPadding)..(inventoryIcon.getY() + inventoryIcon.height + uiBoundaryPadding)) ||
             (::characterIcon.isInitialized &&
                 x in (characterIcon.getX() - uiBoundaryPadding)..(characterIcon.getX() + characterIcon.width + uiBoundaryPadding) &&
-                y in (characterIcon.getY() - uiBoundaryPadding)..(characterIcon.getY() + characterIcon.height + uiBoundaryPadding)) ||
+                y in (characterIcon.getY() - uiBoundaryPadding)..(characterIcon.getY() + inventoryIcon.height + uiBoundaryPadding)) ||
+            (::worldMapButton.isInitialized &&
+                x in (worldMapButton.getX() - uiBoundaryPadding)..(worldMapButton.getX() + worldMapButton.width + uiBoundaryPadding) &&
+                y in (worldMapButton.getY() - uiBoundaryPadding)..(worldMapButton.getY() + worldMapButton.height + uiBoundaryPadding)) ||
             (touchpad?.let {
                 x in (it.getX() - uiBoundaryPadding)..(it.getX() + it.width + uiBoundaryPadding) &&
                     y in (it.getY() - uiBoundaryPadding)..(it.getY() + it.height + uiBoundaryPadding)
-            } ?: false)
-    }
-
-    private fun hideDpad() {
-        dpadVisible = false
-        moveDirection.set(0f, 0f)
-        touchpad?.remove()
-        touchpad = null
-        Gdx.app.log("MyGame", "DPAD hidden")
+            } ?: false) ||
+            (isWorldMapOpen && x in (worldMap.offsetX - uiBoundaryPadding)..(worldMap.offsetX + worldMap.sizeX + uiBoundaryPadding) &&
+                y in (worldMap.offsetY - uiBoundaryPadding)..(worldMap.offsetY + worldMap.sizeY + uiBoundaryPadding)) ||
+            (::debugToggleButton.isInitialized &&
+                x in (debugToggleButton.getX() - uiBoundaryPadding)..(debugToggleButton.getX() + debugToggleButton.width + uiBoundaryPadding) &&
+                y in (debugToggleButton.getY() - uiBoundaryPadding)..(debugToggleButton.getY() + debugToggleButton.height + uiBoundaryPadding))
     }
 
     private fun updateDpad(delta: Float) {
-        if (dpadVisible && touchpad?.isTouched != true && System.currentTimeMillis() - dpadLastTouchTime > dpadTimeout) {
-            hideDpad()
-        }
+        if (!dpadVisible) return
         touchpad?.let { pad ->
             if (pad.isTouched) {
-                dpadLastTouchTime = System.currentTimeMillis()
                 val knobPercentX = pad.knobPercentX
                 val knobPercentY = pad.knobPercentY
                 moveDirection.set(knobPercentX, knobPercentY).nor()
-                dpadMoveTimer += delta
-                if (dpadMoveTimer >= dpadMoveInterval) {
-                    val dx = when {
-                        moveDirection.x > 0.5f -> 1
-                        moveDirection.x < -0.5f -> -1
-                        else -> 0
-                    }
-                    val dy = when {
-                        moveDirection.y > 0.5f -> 1
-                        moveDirection.y < -0.5f -> -1
-                        else -> 0
-                    }
-                    if (dx != 0 || dy != 0) {
-                        val moved = movementManager.moveInDirection(player, dx, dy)
-                        Gdx.app.log("MyGame", "DPAD movement: dx=$dx, dy=$dy, success: $moved")
-                        dpadMoveTimer = 0f
+                if (moveDirection.len() > 0.3f) {
+                    dpadMoveTimer += delta
+                    if (dpadMoveTimer >= dpadMoveInterval) {
+                        val dx = sign(knobPercentX).toInt()
+                        val dy = sign(knobPercentY).toInt()
+                        if (dx != 0 || dy != 0) {
+                            val moved = movementManager.moveInDirection(player, dx, dy, true)
+                            if (moved) dpadMoveTimer -= dpadMoveInterval
+                            Gdx.app.log("MyGame", "DPAD movement: dx=$dx, dy=$dy, success: $moved")
+                        }
                     }
                 }
                 uiBatch.begin()
@@ -342,6 +392,30 @@ class MyGame : ApplicationAdapter() {
                 dpadMoveTimer = 0f
             }
         }
+        movementManager.updateContinuousDirection(player, delta)
+    }
+
+    private fun renderDebugOverlay() {
+        if (!isDebugOverlayVisible) return
+        shapeRenderer.projectionMatrix = cameraManager.camera.combined
+        shapeRenderer.begin(ShapeType.Filled)
+        val viewportWidth = cameraManager.camera.viewportWidth * cameraManager.camera.zoom
+        val viewportHeight = cameraManager.camera.viewportHeight * cameraManager.camera.zoom
+        val minX = maxOf(0f, (cameraManager.camera.position.x - viewportWidth / 2) / mapManager.tileSize).toInt()
+        val maxX = minOf((mapManager.mapTileWidth - 1).toFloat(), (cameraManager.camera.position.x + viewportWidth / 2) / mapManager.tileSize).toInt()
+        val minY = maxOf(0f, (cameraManager.camera.position.y - viewportHeight / 2) / mapManager.tileSize).toInt()
+        val maxY = minOf((mapManager.mapTileHeight - 1).toFloat(), (cameraManager.camera.position.y + viewportHeight / 2) / mapManager.tileSize).toInt()
+        for (x in minX..maxX) {
+            for (y in minY..maxY) {
+                shapeRenderer.color = if (mapManager.isWalkable(x, y) && !monsterManager.isTileOccupied(x, y)) {
+                    Color.GREEN.cpy().apply { a = 0.3f }
+                } else {
+                    Color.RED.cpy().apply { a = 0.3f }
+                }
+                shapeRenderer.rect(x * mapManager.tileSize, y * mapManager.tileSize, mapManager.tileSize, mapManager.tileSize)
+            }
+        }
+        shapeRenderer.end()
     }
 
     override fun render() {
@@ -354,6 +428,7 @@ class MyGame : ApplicationAdapter() {
             combatManager.update(Gdx.graphics.deltaTime)
             if (player.playerTileX != lastPlayerX || player.playerTileY != lastPlayerY) {
                 eventBus.fire("playerMoved", player.playerTileX, player.playerTileY)
+                fogOfWar.update(player.playerX, player.playerY)
                 lastPlayerX = player.playerTileX
                 lastPlayerY = player.playerTileY
             }
@@ -372,6 +447,8 @@ class MyGame : ApplicationAdapter() {
             textRenderer.render(cameraManager.camera, player.playerX, player.playerY, mapManager.tileSize)
             floatingTextManager.render(cameraManager.camera, mapManager.tileSize)
             gameWorldBatch.end()
+            fogOfWar.render(cameraManager.camera, mapManager.tileSize)
+            renderDebugOverlay()
             gameWorldStage.draw()
 
             uiStage.viewport.apply()
@@ -381,61 +458,51 @@ class MyGame : ApplicationAdapter() {
             minimap.render(uiCamera)
             chatWindow.draw()
             chatWindow.renderResizeCorners(uiCamera)
+            worldMap.draw()
             uiStage.act(Gdx.graphics.deltaTime)
             uiStage.draw()
             updateDpad(Gdx.graphics.deltaTime)
+        }
 
-            if (isInventoryOpen && ::inventoryWindow.isInitialized) {
-                shapeRenderer.begin(ShapeType.Filled)
-                shapeRenderer.projectionMatrix = uiCamera.combined
-                shapeRenderer.color = Color(0f, 0f, 0f, 0.5f)
-                shapeRenderer.rect(inventoryWindow.getX(), inventoryWindow.getY(), inventoryWindow.width, inventoryWindow.height)
-                shapeRenderer.end()
-                uiBatch.begin()
-                if (assetManager.isLoaded("icons/inventory.png")) {
-                    uiBatch.draw(assetManager.get("icons/inventory.png", Texture::class.java), inventoryWindow.getX() + 10f, inventoryWindow.getY() + inventoryWindow.height - 60f, 50f * 2f, 50f * 2f)
-                }
-                val font = BitmapFont().apply { color = Color.WHITE; data.setScale(2f) }
-                font.draw(uiBatch, "Items: ${player.getInventoryManager().getItems().joinToString(", ")}", inventoryWindow.getX() + 20f, inventoryWindow.getY() + inventoryWindow.height - 80f)
-                font.dispose()
-                uiBatch.end()
-            }
-
-            if (isCharacterSheetOpen && ::characterWindow.isInitialized) {
-                shapeRenderer.begin(ShapeType.Filled)
-                shapeRenderer.projectionMatrix = uiCamera.combined
-                shapeRenderer.color = Color(0f, 0f, 0f, 0.5f)
-                shapeRenderer.rect(characterWindow.getX(), characterWindow.getY(), characterWindow.width, characterWindow.height)
-                shapeRenderer.end()
-                uiBatch.begin()
-                if (assetManager.isLoaded("icons/character.png")) {
-                    uiBatch.draw(assetManager.get("icons/character.png", Texture::class.java), characterWindow.getX() + 10f, characterWindow.getY() + characterWindow.height - 60f, 50f * 2f, 50f * 2f)
-                }
-                val font = BitmapFont().apply { color = Color.WHITE; data.setScale(3f) }
-                var y = characterWindow.getY() + characterWindow.height - 80f
-                font.draw(uiBatch, "Stats:", characterWindow.getX() + 10f, y); y -= 60f
-                font.draw(uiBatch, "HP: ${player.currentHp}/${player.maxHp} (Lvl ${player.getLevelingSystem().getLevel("HP")})", characterWindow.getX() + 10f, y); y -= 60f
-                font.draw(uiBatch, "Str: ${player.strength} (Lvl ${player.getLevelingSystem().getLevel("strength")})", characterWindow.getX() + 10f, y); y -= 60f
-                font.draw(uiBatch, "Mag: ${player.magic} (Lvl ${player.getLevelingSystem().getLevel("magic")})", characterWindow.getX() + 10f, y); y -= 60f
-                font.draw(uiBatch, "Rng: ${player.ranged} (Lvl ${player.getLevelingSystem().getLevel("ranged")})", characterWindow.getX() + 10f, y); y -= 60f
-                font.draw(uiBatch, "Pry: ${player.prayer} (Lvl ${player.getLevelingSystem().getLevel("prayer")})", characterWindow.getX() + 10f, y); y -= 60f
-                font.draw(uiBatch, "Wdc: ${player.woodcutting} (Lvl ${player.getLevelingSystem().getLevel("woodcutting")})", characterWindow.getX() + 10f, y); y -= 60f
-                font.draw(uiBatch, "Min: ${player.mining} (Lvl ${player.getLevelingSystem().getLevel("mining")})", characterWindow.getX() + 10f, y); y -= 60f
-                font.draw(uiBatch, "Agl: ${player.agility} (Lvl ${player.getLevelingSystem().getLevel("agility")})", characterWindow.getX() + 10f, y); y -= 60f
-                font.draw(uiBatch, "Def: ${player.defense} (Lvl ${player.getLevelingSystem().getLevel("defense")})", characterWindow.getX() + 10f, y)
-                font.dispose()
-                uiBatch.end()
-            }
-
+        if (isInventoryOpen && ::inventoryWindow.isInitialized) {
+            shapeRenderer.begin(ShapeType.Filled)
+            shapeRenderer.projectionMatrix = uiCamera.combined
+            shapeRenderer.color = Color(0f, 0f, 0f, 0.5f)
+            shapeRenderer.rect(inventoryWindow.getX(), inventoryWindow.getY(), inventoryWindow.width, inventoryWindow.height)
+            shapeRenderer.end()
             uiBatch.begin()
-            if (::inventoryIcon.isInitialized && assetManager.isLoaded("icons/inventory.png")) {
-                val inventoryTexture = assetManager.get("icons/inventory.png", Texture::class.java)
-                uiBatch.draw(inventoryTexture, inventoryIcon.getX(), inventoryIcon.getY(), inventoryIcon.width, inventoryIcon.height)
+            if (assetManager.isLoaded("icons/inventory.png")) {
+                uiBatch.draw(assetManager.get("icons/inventory.png", Texture::class.java), inventoryWindow.getX() + 10f, inventoryWindow.getY() + inventoryWindow.height - 60f, 50f * 2f, 50f * 2f)
             }
-            if (::characterIcon.isInitialized && assetManager.isLoaded("icons/character.png")) {
-                val characterTexture = assetManager.get("icons/character.png", Texture::class.java)
-                uiBatch.draw(characterTexture, characterIcon.getX(), characterIcon.getY(), characterIcon.width, characterIcon.height)
+            val font = BitmapFont().apply { color = Color.WHITE; data.setScale(2f) }
+            font.draw(uiBatch, "Items: ${player.getInventoryManager().getItems().joinToString(", ")}", inventoryWindow.getX() + 20f, inventoryWindow.getY() + inventoryWindow.height - 80f)
+            font.dispose()
+            uiBatch.end()
+        }
+
+        if (isCharacterSheetOpen && ::characterWindow.isInitialized) {
+            shapeRenderer.begin(ShapeType.Filled)
+            shapeRenderer.projectionMatrix = uiCamera.combined
+            shapeRenderer.color = Color(0f, 0f, 0f, 0.5f)
+            shapeRenderer.rect(characterWindow.getX(), characterWindow.getY(), characterWindow.width, characterWindow.height)
+            shapeRenderer.end()
+            uiBatch.begin()
+            if (assetManager.isLoaded("icons/character.png")) {
+                uiBatch.draw(assetManager.get("icons/character.png", Texture::class.java), characterWindow.getX() + 10f, characterWindow.getY() + characterWindow.height - 60f, 50f * 2f, 50f * 2f)
             }
+            val font = BitmapFont().apply { color = Color.WHITE; data.setScale(3f) }
+            var y = characterWindow.getY() + characterWindow.height - 80f
+            font.draw(uiBatch, "Stats:", characterWindow.getX() + 10f, y); y -= 60f
+            font.draw(uiBatch, "HP: ${player.currentHp}/${player.maxHp} (Lvl ${player.getLevelingSystem().getLevel("HP")})", characterWindow.getX() + 10f, y); y -= 60f
+            font.draw(uiBatch, "Str: ${player.strength} (Lvl ${player.getLevelingSystem().getLevel("strength")})", characterWindow.getX() + 10f, y); y -= 60f
+            font.draw(uiBatch, "Mag: ${player.magic} (Lvl ${player.getLevelingSystem().getLevel("magic")})", characterWindow.getX() + 10f, y); y -= 60f
+            font.draw(uiBatch, "Rng: ${player.ranged} (Lvl ${player.getLevelingSystem().getLevel("ranged")})", characterWindow.getX() + 10f, y); y -= 60f
+            font.draw(uiBatch, "Pry: ${player.prayer} (Lvl ${player.getLevelingSystem().getLevel("prayer")})", characterWindow.getX() + 10f, y); y -= 60f
+            font.draw(uiBatch, "Wdc: ${player.woodcutting} (Lvl ${player.getLevelingSystem().getLevel("woodcutting")})", characterWindow.getX() + 10f, y); y -= 60f
+            font.draw(uiBatch, "Min: ${player.mining} (Lvl ${player.getLevelingSystem().getLevel("mining")})", characterWindow.getX() + 10f, y); y -= 60f
+            font.draw(uiBatch, "Agl: ${player.agility} (Lvl ${player.getLevelingSystem().getLevel("agility")})", characterWindow.getX() + 10f, y); y -= 60f
+            font.draw(uiBatch, "Def: ${player.defense} (Lvl ${player.getLevelingSystem().getLevel("defense")})", characterWindow.getX() + 10f, y)
+            font.dispose()
             uiBatch.end()
         }
 
@@ -450,8 +517,8 @@ class MyGame : ApplicationAdapter() {
             uiBatch.begin()
             val font = BitmapFont().apply { color = Color.RED; data.setScale(5f) }
             val layout = GlyphLayout(font, "You are dead")
-            val textX = (Gdx.graphics.width - layout.width) / 2f
-            val textY = (Gdx.graphics.height + layout.height) / 2f + 50f
+            val textX = (Gdx.graphics.width.toFloat() - layout.width) / 2f
+            val textY = (Gdx.graphics.height.toFloat() + layout.height) / 2f + 50f
             font.draw(uiBatch, layout, textX, textY)
             if (assetManager.isLoaded("icons/respawn.png")) {
                 val respawnTexture = assetManager.get("icons/respawn.png", Texture::class.java)
@@ -460,7 +527,7 @@ class MyGame : ApplicationAdapter() {
                 uiBatch.draw(respawnTexture, buttonX, buttonY, respawnTexture.width.toFloat(), respawnTexture.height.toFloat())
                 if (Gdx.input.justTouched()) {
                     val touchX = Gdx.input.x.toFloat()
-                    val touchY = Gdx.graphics.height - Gdx.input.y.toFloat()
+                    val touchY = Gdx.graphics.height.toFloat() - Gdx.input.y.toFloat()
                     if (touchX in buttonX..(buttonX + respawnTexture.width) && touchY in buttonY..(buttonY + respawnTexture.height)) {
                         player.respawn()
                         isDeadOverlayVisible = false
@@ -469,12 +536,12 @@ class MyGame : ApplicationAdapter() {
                 }
             } else {
                 val respawnLayout = GlyphLayout(font, "Respawn (Image Missing)")
-                val respawnX = (Gdx.graphics.width - respawnLayout.width) / 2f
+                val respawnX = (Gdx.graphics.width.toFloat() - respawnLayout.width) / 2f
                 val respawnY = textY - 100f
                 font.draw(uiBatch, respawnLayout, respawnX, respawnY)
                 if (Gdx.input.justTouched()) {
                     val touchX = Gdx.input.x.toFloat()
-                    val touchY = Gdx.graphics.height - Gdx.input.y.toFloat()
+                    val touchY = Gdx.graphics.height.toFloat() - Gdx.input.y.toFloat()
                     if (touchX in respawnX..(respawnX + respawnLayout.width) && touchY in (respawnY - respawnLayout.height)..respawnY) {
                         player.respawn()
                         isDeadOverlayVisible = false
@@ -538,6 +605,17 @@ class MyGame : ApplicationAdapter() {
                 characterIcon.getY().coerceIn(0f, height.toFloat() - characterIcon.height)
             )
         }
+        if (::worldMapButton.isInitialized) {
+            worldMapButton.setPosition(
+                worldMapButton.getX().coerceIn(0f, width.toFloat() - worldMapButton.width),
+                worldMapButton.getY().coerceIn(0f, height.toFloat() - worldMapButton.height)
+            )
+        }
+        if (::worldMap.isInitialized) {
+            worldMap.offsetX = worldMap.offsetX.coerceIn(0f, width.toFloat() - worldMap.sizeX)
+            worldMap.offsetY = worldMap.offsetY.coerceIn(0f, height.toFloat() - worldMap.sizeY)
+            worldMap.window.setPosition(worldMap.offsetX, worldMap.offsetY)
+        }
         if (dpadVisible && touchpad != null) {
             touchpad!!.setPosition(
                 touchpad!!.getX().coerceIn(0f, width.toFloat() - touchpad!!.width),
@@ -560,6 +638,8 @@ class MyGame : ApplicationAdapter() {
         monsterManager.dispose()
         floatingTextManager.dispose()
         pathFinder.dispose()
+        fogOfWar.dispose()
+        worldMap.dispose()
         assetManager.dispose()
         gameWorldBatch.dispose()
         uiBatch.dispose()

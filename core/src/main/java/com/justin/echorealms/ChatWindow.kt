@@ -1,3 +1,4 @@
+// core/src/main/java/com/justin/echorealms/ChatWindow.kt
 package com.justin.echorealms
 
 import com.badlogic.gdx.Gdx
@@ -56,7 +57,7 @@ class ChatWindow(skin: Skin, private val player: Player) {
         chatArea.bottom().left()
         scrollPane.setScrollingDisabled(true, false)
         scrollPane.setSize(sizeX, sizeY - 50f)
-        scrollPane.color = Color(0f, 0f, 0f, 0.5f)
+        scrollPane.color = Color(0f, 0f, 0f, 1f) // Black background
         scrollPane.setScrollbarsVisible(true)
         table.add(scrollPane).colspan(4).growX().height(sizeY - 50f).pad(5f)
         table.add(minimizeButton).size(30f, 30f).top().right().pad(5f)
@@ -125,14 +126,12 @@ class ChatWindow(skin: Skin, private val player: Player) {
         minimizedTable.isVisible = false
         minimizedButton.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
-                offsetX = minimizedOffsetX
-                offsetY = minimizedOffsetY
-                table.setPosition(offsetX, offsetY)
                 isMinimized = false
                 table.isVisible = true
                 minimizedTable.isVisible = false
+                table.setPosition(minimizedOffsetX, minimizedOffsetY)
                 updateChatArea()
-                Gdx.app.log("ChatWindow", "Restored chat window at minimized button position ($offsetX, $offsetY)")
+                Gdx.app.log("ChatWindow", "Restored chat window at ($minimizedOffsetX, $minimizedOffsetY)")
             }
         })
 

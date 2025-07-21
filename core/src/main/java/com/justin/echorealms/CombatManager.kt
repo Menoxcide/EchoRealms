@@ -1,7 +1,6 @@
 package com.justin.echorealms
 
 import com.badlogic.gdx.Gdx
-import com.badlogic.gdx.math.Vector3
 import kotlin.math.max
 import kotlin.math.abs
 import kotlin.random.Random

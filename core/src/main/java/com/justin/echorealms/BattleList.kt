@@ -1,3 +1,4 @@
+// core/src/main/java/com/justin/echorealms/BattleList.kt
 package com.justin.echorealms
 
 import com.badlogic.gdx.Gdx
@@ -17,13 +18,13 @@ class BattleList(
     private val player: Player,
     private val camera: OrthographicCamera
 ) {
-    var offsetX = Gdx.graphics.width - 200f - 10f // Anchored below minimap
+    var offsetX = Gdx.graphics.width - 200f - 10f
     var offsetY = Gdx.graphics.height - 200f - 210f
-    var size = 200f // Single size for square
+    var size = 200f
     private var dragOffset = Vector2()
     private val batch = SpriteBatch()
     private val shapeRenderer = ShapeRenderer()
-    private val font = BitmapFont().apply { color = Color.WHITE; data.setScale(1.2f) }
+    private val font = BitmapFont().apply { color = Color.WHITE; data.setScale(2.4f) } // 4x original (1.2f * 2)
     private val layout = GlyphLayout()
     private val resizeCornerSize = 20f
     private val minSize = 150f
@@ -107,7 +108,6 @@ class BattleList(
         batch.projectionMatrix = camera.combined
         shapeRenderer.projectionMatrix = camera.combined
 
-        // Draw background
         shapeRenderer.begin(ShapeType.Filled)
         shapeRenderer.color = Color(0f, 0f, 0f, 0.5f)
         shapeRenderer.rect(offsetX, offsetY, size, size)
@@ -119,9 +119,8 @@ class BattleList(
         shapeRenderer.rectLine(offsetX, offsetY + size, offsetX + size, offsetY + size, borderThickness)
         shapeRenderer.end()
 
-        // Draw HP bars
         shapeRenderer.begin(ShapeType.Filled)
-        var y = offsetY + size - 20f
+        var y = offsetY + size - 80f // Scaled for larger entries
         monsterManager.getMonsters().forEach { monster ->
             val dist = max(abs(player.playerTileX - monster.x.toInt()), abs(player.playerTileY - monster.y.toInt()))
             if (dist <= 15) {
@@ -131,38 +130,36 @@ class BattleList(
                     hpPercentage > 0.2f -> Color.YELLOW
                     else -> Color.RED
                 }
-                val barWidth = size - 25f
-                val barHeight = 15f
+                val barWidth = size - 100f // Scaled
+                val barHeight = 60f // 4x original (15f * 4)
                 val hpWidth = barWidth * hpPercentage
                 shapeRenderer.color = Color.BLACK
-                shapeRenderer.rect(offsetX + 20f, y - 15f, barWidth, barHeight)
+                shapeRenderer.rect(offsetX + 80f, y - 60f, barWidth, barHeight)
                 shapeRenderer.color = hpBarColor
-                shapeRenderer.rect(offsetX + 20f, y - 15f, hpWidth, barHeight)
-                y -= 25f
+                shapeRenderer.rect(offsetX + 80f, y - 60f, hpWidth, barHeight)
+                y -= 100f // Scaled spacing
             }
         }
         shapeRenderer.end()
 
-        // Draw sprites and names
         batch.begin()
-        y = offsetY + size - 20f
+        y = offsetY + size - 80f
         monsterManager.getMonsters().forEach { monster ->
             val dist = max(abs(player.playerTileX - monster.x.toInt()), abs(player.playerTileY - monster.y.toInt()))
             if (dist <= 15) {
                 val isTargeted = monster == player.targetedMonster
                 font.color = if (isTargeted) Color.YELLOW else Color.WHITE
-                monster.sprite.setSize(20f, 20f)
-                monster.sprite.setPosition(offsetX + 5f, y - 20f)
+                monster.sprite.setSize(80f, 80f) // 4x original (20f * 4)
+                monster.sprite.setPosition(offsetX + 20f, y - 80f)
                 monster.sprite.draw(batch)
                 val text = "${monster.stats.name} (${monster.currentHp}/${monster.stats.hp})"
                 layout.setText(font, text)
-                font.draw(batch, text, offsetX + 30f, y - 5f)
-                y -= 25f
+                font.draw(batch, text, offsetX + 120f, y - 20f) // Scaled position
+                y -= 100f
             }
         }
         batch.end()
 
-        // Draw resize corners
         shapeRenderer.begin(ShapeType.Filled)
         shapeRenderer.color = Color.RED
         shapeRenderer.rect(offsetX, offsetY + size - resizeCornerSize, resizeCornerSize, resizeCornerSize)

@@ -1,3 +1,4 @@
+// core/src/main/java/com/justin/echorealms/PathFinder.kt
 package com.justin.echorealms
 
 import com.badlogic.gdx.Gdx
@@ -13,11 +14,7 @@ import java.util.PriorityQueue
 
 class PathFinder(private val mapManager: MapManager) {
     private val shapeRenderer = ShapeRenderer()
-    private val walkableCache = mutableMapOf<Vector2, Boolean>()
-    private val monsterPositionCache = mutableMapOf<Vector2, Boolean>()
     private val costMap = mutableMapOf<Vector2, Float>().withDefault { 1f }
-    private var lastUpdateTime = 0L
-    private val debounceInterval = 200L
 
     init {
         val layer = mapManager.map.layers.get(0) as? TiledMapTileLayer
@@ -33,23 +30,25 @@ class PathFinder(private val mapManager: MapManager) {
     }
 
     fun findPath(startX: Int, startY: Int, endX: Int, endY: Int, monsterManager: MonsterManager): Array<Vector2> {
-        val currentTime = System.currentTimeMillis()
-        if (currentTime - lastUpdateTime < debounceInterval) return Array()
-        lastUpdateTime = currentTime
-
-        walkableCache.clear()
-        monsterPositionCache.clear()
-        monsterManager.getMonsters().forEach { monster ->
-            monsterPositionCache[Vector2(monster.x.toInt().toFloat(), monster.y.toInt().toFloat())] = true
+        val path = Array<Vector2>()
+        var targetX = endX
+        var targetY = endY
+        if (!isWalkable(endX, endY, monsterManager)) {
+            Gdx.app.log("PathFinder", "Target tile ($endX, $endY) is unwalkable or occupied - finding nearest alternative")
+            val nearest = findNearestWalkable(startX, startY, endX, endY, monsterManager)
+            if (nearest == null) {
+                Gdx.app.log("PathFinder", "No nearest walkable tile found")
+                return path
+            }
+            targetX = nearest.x.toInt()
+            targetY = nearest.y.toInt()
+            Gdx.app.log("PathFinder", "Adjusted target to ($targetX, $targetY)")
         }
 
-        val path = Array<Vector2>()
-        if (!isWalkable(endX, endY, monsterManager) || monsterManager.isTileOccupied(endX, endY)) {
-            Gdx.app.log("PathFinder", "Target tile ($endX, $endY) is unwalkable or occupied")
+        if (startX == targetX && startY == targetY) {
+            Gdx.app.log("PathFinder", "Start and target are the same ($startX, $startY)")
             return path
         }
-
-        if (startX == endX && startY == endY) return path
 
         data class Node(val pos: Vector2, val fScore: Float) : Comparable<Node> {
             override fun compareTo(other: Node) = fScore.compareTo(other.fScore)
@@ -62,7 +61,7 @@ class PathFinder(private val mapManager: MapManager) {
         val fScore = mutableMapOf<Vector2, Float>().withDefault { Float.MAX_VALUE }
 
         val start = Vector2(startX.toFloat(), startY.toFloat())
-        val end = Vector2(endX.toFloat(), endY.toFloat())
+        val end = Vector2(targetX.toFloat(), targetY.toFloat())
 
         gScore[start] = 0f
         fScore[start] = heuristic(start, end)
@@ -72,15 +71,22 @@ class PathFinder(private val mapManager: MapManager) {
             val current = openSet.poll().pos
             if (current == end) {
                 reconstructPath(cameFrom, end, path)
+                Gdx.app.log("PathFinder", "Path found: ${path.joinToString()}")
                 return path
             }
 
             closedSet.add(current)
             for (neighbor in getNeighbors(current)) {
-                if (closedSet.contains(neighbor) || !isWalkable(neighbor.x.toInt(), neighbor.y.toInt(), monsterManager)) continue
+                if (closedSet.contains(neighbor) || !isWalkable(neighbor.x.toInt(), neighbor.y.toInt(), monsterManager)) {
+                    Gdx.app.log("PathFinder", "Skipping neighbor ($neighbor): in closed set or unwalkable")
+                    continue
+                }
 
                 val cost = costMap.getValue(neighbor)
-                if (cost == Float.MAX_VALUE) continue
+                if (cost == Float.MAX_VALUE) {
+                    Gdx.app.log("PathFinder", "Skipping neighbor ($neighbor): infinite cost")
+                    continue
+                }
 
                 val tentativeGScore = gScore.getValue(current) + distance(current, neighbor) * cost
                 if (tentativeGScore < gScore.getValue(neighbor)) {
@@ -88,18 +94,64 @@ class PathFinder(private val mapManager: MapManager) {
                     gScore[neighbor] = tentativeGScore
                     fScore[neighbor] = tentativeGScore + heuristic(neighbor, end)
                     openSet.add(Node(neighbor, fScore[neighbor]!!))
+                    Gdx.app.log("PathFinder", "Updated neighbor ($neighbor): gScore=$tentativeGScore, fScore=${fScore[neighbor]}")
                 }
             }
         }
-        Gdx.app.log("PathFinder", "No path found from ($startX, $startY) to ($endX, $endY)")
+        Gdx.app.log("PathFinder", "No path found from ($startX, $startY) to ($targetX, $targetY)")
         return path
     }
 
-    private fun isWalkable(x: Int, y: Int, monsterManager: MonsterManager): Boolean {
-        val key = Vector2(x.toFloat(), y.toFloat())
-        return walkableCache.getOrPut(key) {
-            mapManager.isWalkable(x, y) && !monsterManager.isTileOccupied(x, y) && costMap.getValue(key) != Float.MAX_VALUE
+    private fun findNearestWalkable(startX: Int, startY: Int, endX: Int, endY: Int, monsterManager: MonsterManager): Vector2? {
+        val queue = Array<Vector2>()
+        val visited = Array(mapManager.mapTileWidth) { BooleanArray(mapManager.mapTileHeight) { false } }
+        queue.add(Vector2(endX.toFloat(), endY.toFloat()))
+        visited[endX][endY] = true
+
+        val directions = arrayOf(
+            Vector2(1f, 0f), Vector2(-1f, 0f), Vector2(0f, 1f), Vector2(0f, -1f),
+            Vector2(1f, 1f), Vector2(-1f, 1f), Vector2(1f, -1f), Vector2(-1f, -1f)
+        )
+
+        var radius = 0
+        while (queue.size > 0 && radius < 10) {
+            val size = queue.size
+            repeat(size) {
+                val current = queue.removeIndex(0)
+                val x = current.x.toInt()
+                val y = current.y.toInt()
+                if (x in 0 until mapManager.mapTileWidth && y in 0 until mapManager.mapTileHeight &&
+                    mapManager.isWalkable(x, y) && !monsterManager.isTileOccupied(x, y)) {
+                    Gdx.app.log("PathFinder", "Found nearest walkable tile at ($x, $y) after searching radius $radius")
+                    return current
+                }
+                for (dir in directions) {
+                    val nx = (x + dir.x).toInt()
+                    val ny = (y + dir.y).toInt()
+                    if (nx in 0 until mapManager.mapTileWidth && ny in 0 until mapManager.mapTileHeight && !visited[nx][ny]) {
+                        queue.add(Vector2(nx.toFloat(), ny.toFloat()))
+                        visited[nx][ny] = true
+                        Gdx.app.log("PathFinder", "Added tile ($nx, $ny) to BFS queue")
+                    }
+                }
+            }
+            radius++
         }
+        Gdx.app.log("PathFinder", "No walkable tile found near ($endX, $endY) after searching radius $radius")
+        return null
+    }
+
+    private fun isWalkable(x: Int, y: Int, monsterManager: MonsterManager): Boolean {
+        if (x !in 0 until mapManager.mapTileWidth || y !in 0 until mapManager.mapTileHeight) {
+            Gdx.app.log("PathFinder", "Tile ($x, $y): out of bounds")
+            return false
+        }
+        val isMapWalkable = mapManager.isWalkable(x, y)
+        val isOccupied = monsterManager.isTileOccupied(x, y)
+        val cost = costMap.getValue(Vector2(x.toFloat(), y.toFloat()))
+        val walkable = isMapWalkable && !isOccupied && cost != Float.MAX_VALUE
+        Gdx.app.log("PathFinder", "Tile ($x, $y): walkable=$isMapWalkable, occupied=$isOccupied, cost=$cost, result=$walkable")
+        return walkable
     }
 
     private fun reconstructPath(cameFrom: MutableMap<Vector2, Vector2>, current: Vector2, path: Array<Vector2>) {
