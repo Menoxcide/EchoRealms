@@ -43,6 +43,8 @@ class MonsterManager(
     private val coarseRecalcTimer = 2f
     private var coarseTimer = coarseRecalcTimer
     private val attackRange = 5
+    private val maxPathfindingPerFrame = 5
+    private val lodDistance = 20
 
     init {
         font.color = Color.WHITE
@@ -87,7 +89,7 @@ class MonsterManager(
                             val stats = json.fromJson(MonsterStats::class.java, statsFile.readString())
                             val texturePath = "monster/${categoryDir.name()}/${file.name()}"
                             val sprite = Sprite(assetManager.get(texturePath, Texture::class.java)).apply {
-                                setSize(width * 1.333f, height * 1.333f) // Match player sprite scaling
+                                setSize(width * 1.333f, height * 1.333f)
                             }
                             var spawnX = Random.nextInt(mapManagerRef.mapTileWidth).toFloat()
                             var spawnY = Random.nextInt(mapManagerRef.mapTileHeight).toFloat()
@@ -136,7 +138,11 @@ class MonsterManager(
             }
         }
 
+        var pathfindingCount = 0
         for (monster in monstersToUpdate) {
+            val dx = player.playerX - monster.x
+            val dy = player.playerY - monster.y
+            val dist = max(abs(dx), abs(dy))
             monster.update(delta, pathFinder, player, this, mapManagerRef)
             monster.pathRecalcTimer -= delta
             monster.isAttackedTimer -= delta
@@ -148,17 +154,29 @@ class MonsterManager(
             monster.attackCooldown -= delta
             if (monster.attackCooldown < 0f) monster.attackCooldown = 0f
 
-            val dx = player.playerX - monster.x
-            val dy = player.playerY - monster.y
-            val dist = max(abs(dx), abs(dy))
-            val distFromSpawn = max(abs(monster.spawnX - monster.x.toInt()), abs(monster.spawnY - monster.y.toInt()))
-
-            if (dist < aggroRange && monster.pathRecalcTimer <= 0f) {
-                val target = Vector2(player.playerTileX.toFloat() + 0.5f, player.playerTileY.toFloat() + 0.5f)
-                val path = pathFinder.findPath(monster.x.toInt(), monster.y.toInt(), target.x.toInt(), target.y.toInt(), this)
-                monster.currentPath.clear()
-                if (path.size > 0) monster.currentPath.addAll(path)
-                monster.pathRecalcTimer = 0.5f
+            if (dist <= aggroRange && monster.pathRecalcTimer <= 0f && pathfindingCount < maxPathfindingPerFrame) {
+                if (dist <= lodDistance) {
+                    val target = Vector2(player.playerTileX.toFloat() + 0.5f, player.playerTileY.toFloat() + 0.5f)
+                    val path = pathFinder.findPath(monster.x.toInt(), monster.y.toInt(), target.x.toInt(), target.y.toInt(), this)
+                    monster.currentPath.clear()
+                    if (path.size > 0) {
+                        monster.currentPath.addAll(path)
+                        Gdx.app.log("MonsterManager", "Path set for ${monster.stats.name} to ($target)")
+                    }
+                    monster.pathRecalcTimer = 0.5f
+                    pathfindingCount++
+                } else {
+                    val moveX = sign(dx) * min(delta * monster.stats.speed, abs(dx))
+                    val moveY = sign(dy) * min(delta * monster.stats.speed, abs(dy))
+                    val newX = monster.x + moveX
+                    val newY = monster.y + moveY
+                    if (mapManagerRef.isWalkable(newX.toInt(), newY.toInt()) && !isTileOccupied(newX.toInt(), newY.toInt())) {
+                        monster.x = newX
+                        monster.y = newY
+                        Gdx.app.log("MonsterManager", "${monster.stats.name} moved to ($newX, $newY)")
+                    }
+                    monster.pathRecalcTimer = 1f
+                }
             }
 
             if (monster == player.targetedMonster && dist <= attackRange && (dx == 0f || dy == 0f) && monster.attackCooldown <= 0f && !player.isImmune()) {
@@ -178,8 +196,10 @@ class MonsterManager(
                 }
             }
 
+            val distFromSpawn = max(abs(monster.spawnX - monster.x.toInt()), abs(monster.spawnY - monster.y.toInt()))
             if (distFromSpawn > despawnRange) {
                 monsters.removeValue(monster, true)
+                Gdx.app.log("MonsterManager", "${monster.stats.name} despawned at (${monster.x}, ${monster.y})")
             }
         }
     }
@@ -271,7 +291,23 @@ class MonsterManager(
     }
 }
 
-data class Monster(val sprite: Sprite, var x: Float, var y: Float, val stats: MonsterStats, var currentHp: Int, val currentPath: Array<Vector2>, var pathRecalcTimer: Float, var isAttackedTimer: Float, var attackCooldown: Float, val spawnX: Int, val spawnY: Int, var targetedPlayer: Player? = null, var criticalHitTimer: Float = 0f, var hitTimer: Float = 0f, var isInViewport: Boolean = false) {
+data class Monster(
+    val sprite: Sprite,
+    var x: Float,
+    var y: Float,
+    val stats: MonsterStats,
+    var currentHp: Int,
+    val currentPath: Array<Vector2>,
+    var pathRecalcTimer: Float,
+    var isAttackedTimer: Float,
+    var attackCooldown: Float,
+    val spawnX: Int,
+    val spawnY: Int,
+    var targetedPlayer: Player? = null,
+    var criticalHitTimer: Float = 0f,
+    var hitTimer: Float = 0f,
+    var isInViewport: Boolean = false
+) {
     fun update(delta: Float, pathFinder: PathFinder, player: Player, monsterManager: MonsterManager, mapManager: MapManager) {
         if (player.isDead()) return
 
@@ -289,14 +325,20 @@ data class Monster(val sprite: Sprite, var x: Float, var y: Float, val stats: Mo
                 if (mapManager.isWalkable(newX.toInt(), newY.toInt()) && !monsterManager.isTileOccupied(newX.toInt(), newY.toInt())) {
                     x = newX
                     y = newY
+                    Gdx.app.log("Monster", "${stats.name} moved to ($newX, $newY)")
+                } else {
+                    currentPath.clear()
+                    Gdx.app.log("Monster", "${stats.name} path blocked at ($newX, $newY), clearing path")
                 }
                 if (abs(x - target.x) <= moveDist && abs(y - target.y) <= moveDist) {
                     x = target.x
                     y = target.y
                     currentPath.removeIndex(0)
+                    Gdx.app.log("Monster", "${stats.name} reached waypoint ($target), remaining path: ${currentPath.size}")
                 }
             } else {
                 currentPath.removeIndex(0)
+                Gdx.app.log("Monster", "${stats.name} reached waypoint ($target), remaining path: ${currentPath.size}")
             }
         }
     }

@@ -1,20 +1,21 @@
-// core/src/com/justin/echorealms/WorldMap.kt
 package com.justin.echorealms
 
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer
-import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.scenes.scene2d.ui.Skin
-import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane
+import com.badlogic.gdx.scenes.scene2d.ui.Table
+import com.badlogic.gdx.scenes.scene2d.Actor
+import com.badlogic.gdx.graphics.g2d.Batch
+import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.math.Vector2
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.scenes.scene2d.ui.Window
+import com.badlogic.gdx.scenes.scene2d.utils.DragListener
+import com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType
 
 class WorldMap(
     private val mapManager: MapManager,
@@ -22,20 +23,17 @@ class WorldMap(
     private val skin: Skin,
     private val fogOfWar: FogOfWar
 ) {
-    private val stage = Stage()
-    val window = Window("World Map", skin)
+    val window = Window("World Map", skin, "default")
     private val mapTable = Table()
-    private val scrollPane = ScrollPane(mapTable, skin)
-    private val minimizeButton = TextButton("-", skin)
+    private val scrollPane = ScrollPane(mapTable, skin, "list")
+    private val minimizeButton = TextButton("-", skin, "default")
     private var isMinimized = false
     private val minimizedTable = Table()
-    private val minimizedButton = TextButton("World Map", skin)
+    private val minimizedButton = TextButton("World Map", skin, "default")
     var sizeX = minOf(Gdx.graphics.width * 0.8f, mapManager.mapPixelWidth)
     var sizeY = minOf(Gdx.graphics.height * 0.8f, mapManager.mapPixelHeight)
     var offsetX = (Gdx.graphics.width - sizeX) / 2f
     var offsetY = (Gdx.graphics.height - sizeY) / 2f
-    private var dragStartX = 0f
-    private var dragStartY = 0f
     private val shapeRenderer = ShapeRenderer()
     var minimizedSize = Vector2(100f, 50f)
     var minimizedOffsetX = offsetX
@@ -50,10 +48,11 @@ class WorldMap(
         window.setFillParent(false)
         window.setSize(sizeX, sizeY)
         window.setPosition(offsetX, offsetY)
+        window.background = skin.getDrawable("window")
         window.isMovable = true
+        window.isVisible = false
 
         scrollPane.setSize(sizeX, sizeY - 50f)
-        scrollPane.color = Color(0f, 0f, 0f, 0.5f)
         scrollPane.setScrollbarsVisible(true)
         window.add(scrollPane).colspan(1).grow().pad(5f)
         window.add(minimizeButton).size(30f, 30f).top().right().pad(5f)
@@ -61,6 +60,31 @@ class WorldMap(
 
         mapTable.setSize(mapManager.mapPixelWidth, mapManager.mapPixelHeight)
         mapTable.bottom().left()
+        mapTable.add(object : Actor() {
+            override fun draw(batch: Batch?, parentAlpha: Float) {
+                batch?.end()
+                shapeRenderer.projectionMatrix = stage.camera.combined
+                shapeRenderer.begin(ShapeType.Filled)
+                val tileSize = minOf(sizeX / mapManager.mapTileWidth, sizeY / mapManager.mapTileHeight)
+                for (x in 0 until mapManager.mapTileWidth) {
+                    for (y in 0 until mapManager.mapTileHeight) {
+                        if (fogOfWar.isExplored(x, y)) {
+                            shapeRenderer.color = if (mapManager.isWalkable(x, y)) Color.GREEN else Color.GRAY
+                            shapeRenderer.rect(x * tileSize, y * tileSize, tileSize, tileSize)
+                        } else {
+                            shapeRenderer.color = Color(0f, 0f, 0f, 0.8f)
+                            shapeRenderer.rect(x * tileSize, y * tileSize, tileSize, tileSize)
+                        }
+                    }
+                }
+                val playerX = player.playerTileX * tileSize
+                val playerY = player.playerTileY * tileSize
+                shapeRenderer.color = Color.RED
+                shapeRenderer.rect(playerX, playerY, tileSize * 1.5f, tileSize * 1.5f)
+                shapeRenderer.end()
+                batch?.begin()
+            }
+        }).grow()
 
         minimizeButton.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
@@ -76,7 +100,7 @@ class WorldMap(
 
         minimizedTable.setSize(minimizedSize.x, minimizedSize.y)
         minimizedTable.setPosition(minimizedOffsetX, minimizedOffsetY)
-        minimizedTable.color = Color(1f, 1f, 1f, 0.5f)
+        minimizedTable.background = skin.getDrawable("window")
         minimizedTable.add(minimizedButton).size(minimizedSize.x, minimizedSize.y)
         minimizedTable.isVisible = false
         minimizedButton.addListener(object : ClickListener() {
@@ -91,9 +115,25 @@ class WorldMap(
             }
         })
 
-        stage.addActor(window)
-        stage.addActor(minimizedTable)
-        window.isVisible = false
+        window.addListener(object : DragListener() {
+            override fun drag(event: InputEvent?, x: Float, y: Float, pointer: Int) {
+                offsetX = (x + window.x - sizeX / 2).coerceIn(0f, Gdx.graphics.width - sizeX)
+                offsetY = (y + window.y - sizeY / 2).coerceIn(0f, Gdx.graphics.height - sizeY)
+                window.setPosition(offsetX, offsetY)
+                Gdx.app.log("WorldMap", "Dragged to ($offsetX, $offsetY)")
+            }
+        })
+
+        minimizedTable.addListener(object : DragListener() {
+            override fun drag(event: InputEvent?, x: Float, y: Float, pointer: Int) {
+                if (isMinimized) {
+                    minimizedOffsetX = (x + minimizedTable.x - minimizedSize.x / 2).coerceIn(0f, Gdx.graphics.width - minimizedSize.x)
+                    minimizedOffsetY = (y + minimizedTable.y - minimizedSize.y / 2).coerceIn(0f, Gdx.graphics.height - minimizedSize.y)
+                    minimizedTable.setPosition(minimizedOffsetX, minimizedOffsetY)
+                    Gdx.app.log("WorldMap", "Minimized button dragged to ($minimizedOffsetX, $minimizedOffsetY)")
+                }
+            }
+        })
     }
 
     fun isInBounds(x: Float, y: Float): Boolean {
@@ -135,27 +175,11 @@ class WorldMap(
     }
 
     fun startDragging(x: Float, y: Float) {
-        if (isMinimized) {
-            dragStartX = x - minimizedOffsetX
-            dragStartY = y - minimizedOffsetY
-        } else {
-            dragStartX = x - offsetX
-            dragStartY = y - offsetY
-        }
+        // Handled by DragListener
     }
 
     fun drag(x: Float, y: Float) {
-        if (isMinimized) {
-            minimizedOffsetX = (x - dragStartX).coerceIn(0f, Gdx.graphics.width - minimizedSize.x)
-            minimizedOffsetY = (y - dragStartY).coerceIn(0f, Gdx.graphics.height - minimizedSize.y)
-            minimizedTable.setPosition(minimizedOffsetX, minimizedOffsetY)
-            Gdx.app.log("WorldMap", "Minimized button dragged to ($minimizedOffsetX, $minimizedOffsetY)")
-        } else {
-            offsetX = (x - dragStartX).coerceIn(0f, Gdx.graphics.width - sizeX)
-            offsetY = (y - dragStartY).coerceIn(0f, Gdx.graphics.height - sizeY)
-            window.setPosition(offsetX, offsetY)
-            Gdx.app.log("WorldMap", "Dragged to ($offsetX, $offsetY)")
-        }
+        // Handled by DragListener
     }
 
     fun stopDragging() {
@@ -211,43 +235,9 @@ class WorldMap(
         Gdx.app.log("WorldMap", "Resized to size ($sizeX, $sizeY), offset ($offsetX, $offsetY)")
     }
 
-    fun draw() {
-        stage.act(Gdx.graphics.deltaTime)
-        stage.draw()
-    }
-
     fun render(camera: OrthographicCamera) {
-        if (isMinimized) return
+        if (!window.isVisible) return
         shapeRenderer.projectionMatrix = camera.combined
-        shapeRenderer.begin(ShapeType.Filled)
-        val tileSize = minOf(sizeX / mapManager.mapTileWidth, sizeY / mapManager.mapTileHeight)
-        for (x in 0 until mapManager.mapTileWidth) {
-            for (y in 0 until mapManager.mapTileHeight) {
-                if (fogOfWar.isExplored(x, y)) {
-                    shapeRenderer.color = if (mapManager.isWalkable(x, y)) Color.GREEN else Color.GRAY
-                    shapeRenderer.rect(x * tileSize, y * tileSize, tileSize, tileSize)
-                }
-            }
-        }
-        val playerX = player.playerTileX * tileSize
-        val playerY = player.playerTileY * tileSize
-        shapeRenderer.color = Color.RED
-        shapeRenderer.rect(playerX, playerY, tileSize * 1.5f, tileSize * 1.5f)
-        shapeRenderer.end()
-
-        // Render fog over unexplored areas
-        shapeRenderer.begin(ShapeType.Filled)
-        shapeRenderer.color = Color(0f, 0f, 0f, 0.8f)
-        for (x in 0 until mapManager.mapTileWidth) {
-            for (y in 0 until mapManager.mapTileHeight) {
-                if (!fogOfWar.isExplored(x, y)) {
-                    shapeRenderer.rect(x * tileSize, y * tileSize, tileSize, tileSize)
-                }
-            }
-        }
-        shapeRenderer.end()
-
-        // Render resize corners
         shapeRenderer.begin(ShapeType.Filled)
         shapeRenderer.color = Color.RED
         shapeRenderer.rect(offsetX, offsetY + sizeY - resizeCornerSize, resizeCornerSize, resizeCornerSize)
@@ -258,7 +248,6 @@ class WorldMap(
     }
 
     fun dispose() {
-        stage.dispose()
         shapeRenderer.dispose()
     }
 }

@@ -1,10 +1,7 @@
-// core/src/main/java/com/justin/echorealms/ChatWindow.kt
 package com.justin.echorealms
 
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
-import com.badlogic.gdx.graphics.g2d.BitmapFont
-import com.badlogic.gdx.scenes.scene2d.Stage
 import com.badlogic.gdx.scenes.scene2d.ui.Skin
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.ui.TextField
@@ -14,31 +11,28 @@ import com.badlogic.gdx.scenes.scene2d.utils.ClickListener
 import com.badlogic.gdx.scenes.scene2d.InputEvent
 import com.badlogic.gdx.utils.Align
 import com.badlogic.gdx.math.Vector2
+import com.badlogic.gdx.scenes.scene2d.utils.DragListener
+import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType
-import com.badlogic.gdx.graphics.OrthographicCamera
 
-class ChatWindow(skin: Skin, private val player: Player) {
-    private val stage = Stage()
+class ChatWindow(private val skin: Skin, private val player: Player) {
     val table = Table()
-    private val textField = TextField("", skin)
+    private val textField = TextField("", skin, "default")
     private val chatArea = Table()
-    private val scrollPane = com.badlogic.gdx.scenes.scene2d.ui.ScrollPane(chatArea, skin)
-    private val generalButton = TextButton("General", skin)
-    private val tradeButton = TextButton("Trade", skin)
-    private val clanButton = TextButton("Clan", skin)
-    private val combatLogButton = TextButton("Combat Log", skin)
-    private val minimizeButton = TextButton("-", skin)
-    private val minimizedButton = TextButton("Chat/Log", skin)
-    private val minimizedTable = Table()
+    private val scrollPane = com.badlogic.gdx.scenes.scene2d.ui.ScrollPane(chatArea, skin, "list")
+    private val generalButton = TextButton("General", skin, "default")
+    private val tradeButton = TextButton("Trade", skin, "default")
+    private val clanButton = TextButton("Clan", skin, "default")
+    private val combatLogButton = TextButton("Combat Log", skin, "default")
+    private val minimizeButton = TextButton("-", skin, "default")
+    val minimizedTable = Table()
+    private val minimizedButton = TextButton("Chat/Log", skin, "default")
     private var currentTab = "General"
     var sizeX = 600f
     var sizeY = 225f
     var offsetX = (Gdx.graphics.width - sizeX) / 2f
     var offsetY = 10f
-    private var dragStartX = 0f
-    private var dragStartY = 0f
-    private val shapeRenderer = ShapeRenderer()
     private var isMinimized = false
     var minimizedSize = Vector2(100f, 50f)
     var minimizedOffsetX = offsetX
@@ -53,11 +47,12 @@ class ChatWindow(skin: Skin, private val player: Player) {
         table.setFillParent(false)
         table.setSize(sizeX, sizeY)
         table.setPosition(offsetX, offsetY)
+        table.background = skin.getDrawable("window")
+        table.isVisible = true
 
         chatArea.bottom().left()
         scrollPane.setScrollingDisabled(true, false)
         scrollPane.setSize(sizeX, sizeY - 50f)
-        scrollPane.color = Color(0f, 0f, 0f, 1f) // Black background
         scrollPane.setScrollbarsVisible(true)
         table.add(scrollPane).colspan(4).growX().height(sizeY - 50f).pad(5f)
         table.add(minimizeButton).size(30f, 30f).top().right().pad(5f)
@@ -109,6 +104,7 @@ class ChatWindow(skin: Skin, private val player: Player) {
         table.add(combatLogButton).pad(5f)
         table.row()
 
+        textField.setSize(sizeX * 2, 40f) // Doubled the width of the input box
         textField.setTextFieldListener { _, c ->
             if (c == '\n' && textField.text.isNotEmpty()) {
                 val message = "${player.playerTileX},${player.playerTileY}: ${textField.text}"
@@ -117,11 +113,11 @@ class ChatWindow(skin: Skin, private val player: Player) {
                 Gdx.app.log("ChatWindow", "Message sent: $message")
             }
         }
-        table.add(textField).colspan(4).growX().pad(5f)
+        table.add(textField).colspan(4).width(sizeX * 2).height(40f).pad(5f)
 
         minimizedTable.setSize(minimizedSize.x, minimizedSize.y)
         minimizedTable.setPosition(minimizedOffsetX, minimizedOffsetY)
-        minimizedTable.color = Color(1f, 1f, 1f, 0.5f)
+        minimizedTable.background = skin.getDrawable("window")
         minimizedTable.add(minimizedButton).size(minimizedSize.x, minimizedSize.y)
         minimizedTable.isVisible = false
         minimizedButton.addListener(object : ClickListener() {
@@ -135,17 +131,33 @@ class ChatWindow(skin: Skin, private val player: Player) {
             }
         })
 
-        stage.addActor(table)
-        stage.addActor(minimizedTable)
+        table.addListener(object : DragListener() {
+            override fun drag(event: InputEvent?, x: Float, y: Float, pointer: Int) {
+                if (!isMinimized) {
+                    offsetX = (x + table.x - sizeX / 2).coerceIn(0f, Gdx.graphics.width - sizeX)
+                    offsetY = (y + table.y - sizeY / 2).coerceIn(0f, Gdx.graphics.height - sizeY)
+                    table.setPosition(offsetX, offsetY)
+                    Gdx.app.log("ChatWindow", "Dragged to ($offsetX, $offsetY)")
+                }
+            }
+        })
+
+        minimizedTable.addListener(object : DragListener() {
+            override fun drag(event: InputEvent?, x: Float, y: Float, pointer: Int) {
+                if (isMinimized) {
+                    minimizedOffsetX = (x + minimizedTable.x - minimizedSize.x / 2).coerceIn(0f, Gdx.graphics.width - minimizedSize.x)
+                    minimizedOffsetY = (y + minimizedTable.y - minimizedSize.y / 2).coerceIn(0f, Gdx.graphics.height - minimizedSize.y)
+                    minimizedTable.setPosition(minimizedOffsetX, minimizedOffsetY)
+                    Gdx.app.log("ChatWindow", "Minimized button dragged to ($minimizedOffsetX, $minimizedOffsetY)")
+                }
+            }
+        })
+
         updateChatArea()
     }
 
     fun addMessage(message: String, tab: String) {
-        val labelStyle = Label.LabelStyle().apply {
-            font = BitmapFont().apply { data.setScale(2f) }
-            fontColor = Color.WHITE
-        }
-        val label = Label("[$tab] $message", labelStyle)
+        val label = Label("[$tab] $message", skin, "default")
         label.setWrap(true)
         label.setAlignment(Align.left)
         chatArea.add(label).width(sizeX - 30f).pad(5f).left()
@@ -161,31 +173,17 @@ class ChatWindow(skin: Skin, private val player: Player) {
 
     private fun updateChatArea() {
         chatArea.clear()
-        addMessage("Welcome to $currentTab chat!", currentTab)
+        if (currentTab != "Combat Log") {
+            addMessage("Welcome to $currentTab chat!", currentTab)
+        }
     }
 
     fun startDragging(screenX: Float, screenY: Float) {
-        if (isMinimized) {
-            dragStartX = screenX - minimizedOffsetX
-            dragStartY = screenY - minimizedOffsetY
-        } else {
-            dragStartX = screenX - offsetX
-            dragStartY = screenY - offsetY
-        }
+        // Handled by DragListener
     }
 
     fun drag(screenX: Float, screenY: Float) {
-        if (isMinimized) {
-            minimizedOffsetX = (screenX - dragStartX).coerceIn(0f, Gdx.graphics.width - minimizedSize.x)
-            minimizedOffsetY = (screenY - dragStartY).coerceIn(0f, Gdx.graphics.height - minimizedSize.y)
-            minimizedTable.setPosition(minimizedOffsetX, minimizedOffsetY)
-            Gdx.app.log("ChatWindow", "Minimized button dragged to ($minimizedOffsetX, $minimizedOffsetY)")
-        } else {
-            offsetX = (screenX - dragStartX).coerceIn(0f, Gdx.graphics.width - sizeX)
-            offsetY = (screenY - dragStartY).coerceIn(0f, Gdx.graphics.height - sizeY)
-            table.setPosition(offsetX, offsetY)
-            Gdx.app.log("ChatWindow", "Dragged to ($offsetX, $offsetY)")
-        }
+        // Handled by DragListener
     }
 
     fun stopDragging() {}
@@ -274,6 +272,7 @@ class ChatWindow(skin: Skin, private val player: Player) {
         table.setSize(sizeX, sizeY)
         scrollPane.setSize(sizeX, sizeY - 50f)
         table.setPosition(offsetX, offsetY)
+        textField.setSize(sizeX * 2, 40f) // Ensure text field width is updated
         Gdx.app.log("ChatWindow", "Resized to size ($sizeX, $sizeY), offset ($offsetX, $offsetY)")
     }
 
@@ -286,6 +285,7 @@ class ChatWindow(skin: Skin, private val player: Player) {
 
     fun renderResizeCorners(camera: OrthographicCamera) {
         if (isMinimized) return
+        val shapeRenderer = ShapeRenderer()
         shapeRenderer.projectionMatrix = camera.combined
         shapeRenderer.begin(ShapeType.Filled)
         shapeRenderer.color = Color.YELLOW
@@ -294,15 +294,10 @@ class ChatWindow(skin: Skin, private val player: Player) {
         shapeRenderer.rect(offsetX, offsetY, resizeCornerSize, resizeCornerSize)
         shapeRenderer.rect(offsetX + sizeX - resizeCornerSize, offsetY, resizeCornerSize, resizeCornerSize)
         shapeRenderer.end()
-    }
-
-    fun draw() {
-        stage.act(Gdx.graphics.deltaTime)
-        stage.draw()
+        shapeRenderer.dispose()
     }
 
     fun dispose() {
-        stage.dispose()
-        shapeRenderer.dispose()
+        // No need to dispose stage since it's managed by UIManager
     }
 }

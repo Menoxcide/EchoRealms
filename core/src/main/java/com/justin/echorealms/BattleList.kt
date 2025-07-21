@@ -1,34 +1,55 @@
-// core/src/main/java/com/justin/echorealms/BattleList.kt
 package com.justin.echorealms
 
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
-import com.badlogic.gdx.graphics.g2d.SpriteBatch
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer
-import com.badlogic.gdx.graphics.OrthographicCamera
+import com.badlogic.gdx.scenes.scene2d.ui.Skin
+import com.badlogic.gdx.scenes.scene2d.ui.Table
+import com.badlogic.gdx.scenes.scene2d.ui.Label
+import com.badlogic.gdx.scenes.scene2d.ui.Image
+import com.badlogic.gdx.scenes.scene2d.ui.ProgressBar
 import com.badlogic.gdx.math.Vector2
-import com.badlogic.gdx.graphics.g2d.BitmapFont
-import com.badlogic.gdx.graphics.g2d.GlyphLayout
+import com.badlogic.gdx.scenes.scene2d.utils.DragListener
+import com.badlogic.gdx.scenes.scene2d.InputEvent
+import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType
+import com.badlogic.gdx.graphics.OrthographicCamera
 import kotlin.math.abs
 import kotlin.math.max
 
 class BattleList(
     private val monsterManager: MonsterManager,
     private val player: Player,
-    private val camera: OrthographicCamera
+    private val skin: Skin
 ) {
+    val table = Table()
     var offsetX = Gdx.graphics.width - 200f - 10f
     var offsetY = Gdx.graphics.height - 200f - 210f
     var size = 200f
     private var dragOffset = Vector2()
-    private val batch = SpriteBatch()
-    private val shapeRenderer = ShapeRenderer()
-    private val font = BitmapFont().apply { color = Color.WHITE; data.setScale(2.4f) } // 4x original (1.2f * 2)
-    private val layout = GlyphLayout()
     private val resizeCornerSize = 20f
     private val minSize = 150f
     private val maxSize = minOf(Gdx.graphics.width * 0.5f, Gdx.graphics.height * 0.5f)
+
+    init {
+        table.setSize(size, size)
+        table.setPosition(offsetX, offsetY)
+        table.background = skin.getDrawable("window")
+        table.isVisible = true
+        table.addListener(object : DragListener() {
+            override fun dragStart(event: InputEvent?, x: Float, y: Float, pointer: Int) {
+                dragOffset.set(x, y)
+                Gdx.app.log("BattleList", "Started dragging at ($x, $y)")
+            }
+            override fun drag(event: InputEvent?, x: Float, y: Float, pointer: Int) {
+                val newX = (table.x + (x - dragOffset.x)).coerceIn(0f, Gdx.graphics.width.toFloat() - size)
+                val newY = (table.y + (y - dragOffset.y)).coerceIn(0f, Gdx.graphics.height.toFloat() - size)
+                offsetX = newX
+                offsetY = newY
+                table.setPosition(offsetX, offsetY)
+                Gdx.app.log("BattleList", "Dragged to ($offsetX, $offsetY)")
+            }
+        })
+    }
 
     fun isInBounds(x: Float, y: Float): Boolean {
         return x in offsetX..(offsetX + size) && y in offsetY..(offsetY + size)
@@ -58,9 +79,7 @@ class BattleList(
     }
 
     fun drag(x: Float, y: Float) {
-        offsetX = (x - dragOffset.x).coerceIn(0f, Gdx.graphics.width - size)
-        offsetY = (y - dragOffset.y).coerceIn(0f, Gdx.graphics.height - size)
-        Gdx.app.log("BattleList", "Dragged to ($offsetX, $offsetY)")
+        // Handled by DragListener
     }
 
     fun stopDragging() {
@@ -99,67 +118,37 @@ class BattleList(
             }
         }
         size = size.coerceIn(minSize, maxSize)
-        offsetX = offsetX.coerceIn(0f, Gdx.graphics.width - size)
-        offsetY = offsetY.coerceIn(0f, Gdx.graphics.height - size)
+        offsetX = offsetX.coerceIn(0f, Gdx.graphics.width.toFloat() - size)
+        offsetY = offsetY.coerceIn(0f, Gdx.graphics.height.toFloat() - size)
+        table.setSize(size, size)
+        table.setPosition(offsetX, offsetY)
         Gdx.app.log("BattleList", "Resized to size ($size, $size), offset ($offsetX, $offsetY)")
     }
 
-    fun render() {
-        batch.projectionMatrix = camera.combined
-        shapeRenderer.projectionMatrix = camera.combined
-
-        shapeRenderer.begin(ShapeType.Filled)
-        shapeRenderer.color = Color(0f, 0f, 0f, 0.5f)
-        shapeRenderer.rect(offsetX, offsetY, size, size)
-        val borderThickness = size / 50f
-        shapeRenderer.color = Color.WHITE
-        shapeRenderer.rectLine(offsetX, offsetY, offsetX + size, offsetY, borderThickness)
-        shapeRenderer.rectLine(offsetX, offsetY, offsetX, offsetY + size, borderThickness)
-        shapeRenderer.rectLine(offsetX + size, offsetY, offsetX + size, offsetY + size, borderThickness)
-        shapeRenderer.rectLine(offsetX, offsetY + size, offsetX + size, offsetY + size, borderThickness)
-        shapeRenderer.end()
-
-        shapeRenderer.begin(ShapeType.Filled)
-        var y = offsetY + size - 80f // Scaled for larger entries
+    fun render(camera: OrthographicCamera) {
+        if (!table.isVisible) return
+        table.clear()
+        var y = size - 80f
         monsterManager.getMonsters().forEach { monster ->
             val dist = max(abs(player.playerTileX - monster.x.toInt()), abs(player.playerTileY - monster.y.toInt()))
             if (dist <= 15) {
                 val hpPercentage = monster.currentHp.toFloat() / monster.stats.hp.toFloat()
-                val hpBarColor = when {
-                    hpPercentage > 0.5f -> Color.GREEN
-                    hpPercentage > 0.2f -> Color.YELLOW
-                    else -> Color.RED
-                }
-                val barWidth = size - 100f // Scaled
-                val barHeight = 60f // 4x original (15f * 4)
-                val hpWidth = barWidth * hpPercentage
-                shapeRenderer.color = Color.BLACK
-                shapeRenderer.rect(offsetX + 80f, y - 60f, barWidth, barHeight)
-                shapeRenderer.color = hpBarColor
-                shapeRenderer.rect(offsetX + 80f, y - 60f, hpWidth, barHeight)
-                y -= 100f // Scaled spacing
-            }
-        }
-        shapeRenderer.end()
-
-        batch.begin()
-        y = offsetY + size - 80f
-        monsterManager.getMonsters().forEach { monster ->
-            val dist = max(abs(player.playerTileX - monster.x.toInt()), abs(player.playerTileY - monster.y.toInt()))
-            if (dist <= 15) {
+                val hpBarStyle = skin.get("default-horizontal", ProgressBar.ProgressBarStyle::class.java)
+                val hpBar = ProgressBar(0f, 1f, 0.01f, false, hpBarStyle)
+                hpBar.value = hpPercentage
+                hpBar.setSize(size - 100f, 60f)
                 val isTargeted = monster == player.targetedMonster
-                font.color = if (isTargeted) Color.YELLOW else Color.WHITE
-                monster.sprite.setSize(80f, 80f) // 4x original (20f * 4)
-                monster.sprite.setPosition(offsetX + 20f, y - 80f)
-                monster.sprite.draw(batch)
-                val text = "${monster.stats.name} (${monster.currentHp}/${monster.stats.hp})"
-                layout.setText(font, text)
-                font.draw(batch, text, offsetX + 120f, y - 20f) // Scaled position
+                val label = Label("${monster.stats.name} (${monster.currentHp}/${monster.stats.hp})", skin, if (isTargeted) "white" else "default")
+                table.add(Image(monster.sprite.texture)).size(80f, 80f).pad(10f)
+                table.add(hpBar).width(size - 100f).height(60f).pad(10f)
+                table.add(label).pad(10f)
+                table.row()
                 y -= 100f
             }
         }
-        batch.end()
-
+        // Render resize corners
+        val shapeRenderer = ShapeRenderer()
+        shapeRenderer.projectionMatrix = camera.combined
         shapeRenderer.begin(ShapeType.Filled)
         shapeRenderer.color = Color.RED
         shapeRenderer.rect(offsetX, offsetY + size - resizeCornerSize, resizeCornerSize, resizeCornerSize)
@@ -167,13 +156,11 @@ class BattleList(
         shapeRenderer.rect(offsetX, offsetY, resizeCornerSize, resizeCornerSize)
         shapeRenderer.rect(offsetX + size - resizeCornerSize, offsetY, resizeCornerSize, resizeCornerSize)
         shapeRenderer.end()
-
+        shapeRenderer.dispose()
         Gdx.app.log("BattleList", "Rendered at ($offsetX, $offsetY), size ($size, $size)")
     }
 
     fun dispose() {
-        batch.dispose()
-        shapeRenderer.dispose()
-        font.dispose()
+        // No need to dispose stage since it's managed by UIManager
     }
 }
