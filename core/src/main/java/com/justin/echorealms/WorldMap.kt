@@ -54,37 +54,43 @@ class WorldMap(
 
         scrollPane.setSize(sizeX, sizeY - 50f)
         scrollPane.setScrollbarsVisible(true)
+        scrollPane.setFadeScrollBars(false)
         window.add(scrollPane).colspan(1).grow().pad(5f)
         window.add(minimizeButton).size(30f, 30f).top().right().pad(5f)
         window.row()
 
-        mapTable.setSize(mapManager.mapPixelWidth, mapManager.mapPixelHeight)
+        mapTable.setSize(sizeX - 10f, sizeY - 50f)
         mapTable.bottom().left()
         mapTable.add(object : Actor() {
             override fun draw(batch: Batch?, parentAlpha: Float) {
                 batch?.end()
                 shapeRenderer.projectionMatrix = stage.camera.combined
                 shapeRenderer.begin(ShapeType.Filled)
-                val tileSize = minOf(sizeX / mapManager.mapTileWidth, sizeY / mapManager.mapTileHeight)
+                val tileSize = minOf(
+                    (sizeX - 10f) / mapManager.mapTileWidth,
+                    (sizeY - 50f) / mapManager.mapTileHeight
+                )
                 for (x in 0 until mapManager.mapTileWidth) {
                     for (y in 0 until mapManager.mapTileHeight) {
+                        val drawX = mapTable.x + x * tileSize
+                        val drawY = mapTable.y + y * tileSize
                         if (fogOfWar.isExplored(x, y)) {
                             shapeRenderer.color = if (mapManager.isWalkable(x, y)) Color.GREEN else Color.GRAY
-                            shapeRenderer.rect(x * tileSize, y * tileSize, tileSize, tileSize)
+                            shapeRenderer.rect(drawX, drawY, tileSize, tileSize)
                         } else {
                             shapeRenderer.color = Color(0f, 0f, 0f, 0.8f)
-                            shapeRenderer.rect(x * tileSize, y * tileSize, tileSize, tileSize)
+                            shapeRenderer.rect(drawX, drawY, tileSize, tileSize)
                         }
                     }
                 }
-                val playerX = player.playerTileX * tileSize
-                val playerY = player.playerTileY * tileSize
+                val playerX = mapTable.x + player.playerTileX * tileSize
+                val playerY = mapTable.y + player.playerTileY * tileSize
                 shapeRenderer.color = Color.RED
                 shapeRenderer.rect(playerX, playerY, tileSize * 1.5f, tileSize * 1.5f)
                 shapeRenderer.end()
                 batch?.begin()
             }
-        }).grow()
+        }).size(sizeX - 10f, sizeY - 50f)
 
         minimizeButton.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
@@ -231,6 +237,7 @@ class WorldMap(
         offsetY = offsetY.coerceIn(0f, Gdx.graphics.height - sizeY)
         window.setSize(sizeX, sizeY)
         scrollPane.setSize(sizeX, sizeY - 50f)
+        mapTable.setSize(sizeX - 10f, sizeY - 50f)
         window.setPosition(offsetX, offsetY)
         Gdx.app.log("WorldMap", "Resized to size ($sizeX, $sizeY), offset ($offsetX, $offsetY)")
     }

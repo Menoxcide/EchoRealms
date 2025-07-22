@@ -79,13 +79,19 @@ class MyGame : ApplicationAdapter() {
             Gdx.app.error("AssetManager", "Failed to load ui/uiskin.json")
         }
 
+        val skin = try {
+            assetManager.get("ui/uiskin.json", Skin::class.java)
+        } catch (e: Exception) {
+            Gdx.app.error("AssetManager", "Error loading skin: ${e.message}")
+            null
+        }
+        Gdx.app.log("MyGame", "Skin loaded: ${skin != null}")
+
         cameraManager = CameraManager(mapManager.mapPixelWidth, mapManager.mapPixelHeight)
         cameraManager.camera.zoom = cameraManager.minZoom.toFloat() / 1000f
 
         uiCamera = OrthographicCamera().apply { setToOrtho(false, Gdx.graphics.width.toFloat(), Gdx.graphics.height.toFloat()) }
 
-        val skin = assetManager.get("ui/uiskin.json", Skin::class.java)
-        Gdx.app.log("MyGame", "Skin loaded: ${skin != null}")
         player = Player(mapManager.tileSize, (mapManager.mapTileWidth / 2f), (mapManager.mapTileHeight / 2f), floatingTextManager, null, inventoryManager, levelingSystem, assetManager, mapManager, eventBus)
         player.cameraManager = cameraManager
         monsterManager = MonsterManager(mapManager, player, eventBus, pathFinder, floatingTextManager, assetManager, cameraManager, mapManager)
@@ -97,9 +103,9 @@ class MyGame : ApplicationAdapter() {
 
         chatWindow = ChatWindow(skin, player)
         combatManager = CombatManager(player, monsterManager, floatingTextManager, inventoryManager, chatWindow)
-        minimap = Minimap(mapManager, player, cameraManager, skin)
+        minimap = Minimap(mapManager, player, cameraManager, skin ?: Skin())
         fogOfWar = FogOfWar(mapManager, player)
-        worldMap = WorldMap(mapManager, player, skin, fogOfWar)
+        worldMap = WorldMap(mapManager, player, skin ?: Skin(), fogOfWar)
         battleList = BattleList(monsterManager, player, skin, mapManager)
 
         uiManager = UIManager(player, mapManager, monsterManager, cameraManager, fogOfWar, inventoryManager, assetManager, worldMap, battleList, chatWindow, minimap)

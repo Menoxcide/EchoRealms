@@ -6,6 +6,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.Skin
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.ui.Label
 import com.badlogic.gdx.scenes.scene2d.ui.Image
+import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane
 import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.graphics.g2d.Batch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
@@ -19,6 +20,8 @@ import com.badlogic.gdx.scenes.scene2d.utils.DragListener
 import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.scenes.scene2d.ui.Label.LabelStyle
 import com.badlogic.gdx.utils.Align
+import kotlin.math.max
+import kotlin.math.min
 
 class BattleList(
     private val monsterManager: MonsterManager,
@@ -27,6 +30,8 @@ class BattleList(
     private val mapManager: MapManager
 ) {
     val table = Table()
+    private val contentTable = Table() // Inner table for scrollable content
+    private lateinit var scrollPane: ScrollPane // ScrollPane to wrap content
     var offsetX = Gdx.graphics.width - 200f - 10f
     var offsetY = Gdx.graphics.height - 200f - 210f
     var size = 200f
@@ -34,7 +39,7 @@ class BattleList(
     private val resizeCornerSize = 20f
     private val minSize = 150f
     private val maxSize = minOf(Gdx.graphics.width * 0.5f, Gdx.graphics.height * 0.5f)
-    private val sidePadding = 12f // Increased padding to accommodate larger elements
+    private val sidePadding = 12f
     private val shapeRenderer = ShapeRenderer()
 
     init {
@@ -42,11 +47,20 @@ class BattleList(
         table.setPosition(offsetX, offsetY)
         if (skin != null) {
             table.background = skin.getDrawable("window")
+            // Initialize ScrollPane with contentTable
+            scrollPane = ScrollPane(contentTable, skin, "list").apply {
+                setSize(size, size - 20f) // Reserve space for scrollbars
+                setScrollingDisabled(true, false) // Enable vertical scrolling only
+                setScrollbarsVisible(true)
+            }
+            table.add(scrollPane).grow().pad(sidePadding)
         } else {
-            Gdx.app.log("BattleList", "Skin is null, skipping table background")
+            Gdx.app.log("BattleList", "Skin is null, skipping table background and ScrollPane")
+            // Fallback: add contentTable directly without ScrollPane
+            table.add(contentTable).grow().pad(sidePadding)
         }
         table.isVisible = true
-        table.top() // Align entries to the top
+        table.top()
         table.addListener(object : DragListener() {
             override fun dragStart(event: InputEvent?, x: Float, y: Float, pointer: Int) {
                 dragOffset.set(x, y)
@@ -148,6 +162,9 @@ class BattleList(
         offsetX = offsetX.coerceIn(0f, Gdx.graphics.width.toFloat() - size)
         offsetY = offsetY.coerceIn(0f, Gdx.graphics.height.toFloat() - size)
         table.setSize(size, size)
+        if (skin != null) {
+            scrollPane.setSize(size, size - 20f) // Update ScrollPane size
+        }
         table.setPosition(offsetX, offsetY)
         Gdx.app.log("BattleList", "Resized to size ($size, $size), offset ($offsetX, $offsetY)")
     }
@@ -157,8 +174,8 @@ class BattleList(
             Gdx.app.log("BattleList", "Table is not visible")
             return
         }
-        table.clear()
-        Gdx.app.log("BattleList", "Clearing table for update")
+        contentTable.clear()
+        Gdx.app.log("BattleList", "Clearing contentTable for update")
 
         // Calculate viewport in world coordinates
         val viewport = Rectangle(
@@ -169,22 +186,35 @@ class BattleList(
         )
         Gdx.app.log("BattleList", "Viewport: x=${viewport.x}, y=${viewport.y}, width=${viewport.width}, height=${viewport.height}")
 
+        // Calculate clusters intersecting the viewport
+        val minClusterX = max(0, ((viewport.x / mapManager.tileSize) / monsterManager.clusterSize).toInt())
+        val maxClusterX = min((mapManager.mapTileWidth / monsterManager.clusterSize).toInt(), ((viewport.x + viewport.width) / mapManager.tileSize / monsterManager.clusterSize).toInt())
+        val minClusterY = max(0, ((viewport.y / mapManager.tileSize) / monsterManager.clusterSize).toInt())
+        val maxClusterY = min((mapManager.mapTileHeight / monsterManager.clusterSize).toInt(), ((viewport.y + viewport.height) / mapManager.tileSize / monsterManager.clusterSize).toInt())
+        val activeClusters = mutableListOf<Pair<Int, Int>>()
+        for (x in minClusterX..maxClusterX) {
+            for (y in minClusterY..maxClusterY) {
+                activeClusters.add(Pair(x, y))
+            }
+        }
+        Gdx.app.log("BattleList", "Processing ${activeClusters.size} clusters: $activeClusters")
+
         // Calculate dynamic widths for elements (scaled up 20%)
         val availableWidth = size - 2 * sidePadding
         val spriteWidth = 48f // 40 * 1.2
-        val hpBarWidth = availableWidth * 0.4f // 40% of available width
+        val hpBarWidth = availableWidth * 0.4f
         val labelWidth = availableWidth - spriteWidth - hpBarWidth - 2 * sidePadding
 
         // Create scaled label style
         val labelStyle = skin?.let { LabelStyle(it.get("default", LabelStyle::class.java)) }?.apply {
-            font.data.setScale(1.2f) // Scale font by 20%
+            font.data.setScale(1.2f)
         } ?: LabelStyle().apply {
             Gdx.app.log("BattleList", "Skin is null, using default LabelStyle")
         }
 
-        // Add monsters in viewport to the table
-        val monsters = monsterManager.getMonsters()
-        Gdx.app.log("BattleList", "Found ${monsters.size} monsters in MonsterManager")
+        // Add monsters in viewport to the contentTable
+        val monsters = monsterManager.getMonstersInClusters(activeClusters)
+        Gdx.app.log("BattleList", "Found ${monsters.size} monsters in active clusters")
         var addedMonsters = 0
         monsters.forEach { monster ->
             val worldX = monster.x * mapManager.tileSize
@@ -195,7 +225,7 @@ class BattleList(
                 val filteredName = monster.stats.name.replace(Regex("\\s*\\((?i)(old|new)\\)", RegexOption.IGNORE_CASE), "").trim()
                 // Create a nested table for the row
                 val rowTable = Table().apply {
-                    top() // Align contents to top
+                    top()
                     val spriteImage = Image(monster.sprite.texture).apply {
                         setSize(spriteWidth, spriteWidth)
                     }
@@ -210,7 +240,7 @@ class BattleList(
                                 hpPercentage > 0.2f -> Color.YELLOW
                                 else -> Color.RED
                             }
-                            val barHeight = 6f // 5 * 1.2
+                            val barHeight = 6f
                             val hpWidth = width * hpPercentage
                             shapeRenderer.color = Color.BLACK
                             shapeRenderer.rect(x, y, width, barHeight)
@@ -240,7 +270,7 @@ class BattleList(
                             }
                         }
                     }.apply {
-                        setSize(availableWidth, spriteWidth) // Match row height
+                        setSize(availableWidth, spriteWidth)
                     }
                     add(spriteImage).size(spriteWidth, spriteWidth).pad(sidePadding)
                     add(hpBarActor).width(hpBarWidth).height(6f).pad(sidePadding)
@@ -256,24 +286,26 @@ class BattleList(
                             }
                         }
                     })
-                    setSize(availableWidth, spriteWidth) // Match row width and height
+                    setSize(availableWidth, spriteWidth)
                     if (skin != null) {
-                        background = skin.getDrawable("window") // Line 253
+                        background = skin.getDrawable("window")
                     } else {
                         Gdx.app.log("BattleList", "Skin is null, skipping rowTable background for ${monster.stats.name}")
                     }
                 }
-                table.add(rowTable).width(availableWidth).pad(sidePadding).top()
-                table.row()
+                contentTable.add(rowTable).width(availableWidth).pad(sidePadding).top()
+                contentTable.row()
                 addedMonsters++
-                Gdx.app.log("BattleList", "Added monster $filteredName to table, spriteWidth=$spriteWidth, hpBarWidth=$hpBarWidth, labelWidth=$labelWidth")
+                Gdx.app.log("BattleList", "Added monster $filteredName to contentTable, spriteWidth=$spriteWidth, hpBarWidth=$hpBarWidth, labelWidth=$labelWidth")
             }
         }
         if (addedMonsters == 0) {
-            table.add(Label("No monsters visible", labelStyle)).grow().pad(sidePadding).top()
-            table.row()
-            Gdx.app.log("BattleList", "No monsters added to table")
+            contentTable.add(Label("No monsters visible", labelStyle)).grow().pad(sidePadding).top()
+            contentTable.row()
+            Gdx.app.log("BattleList", "No monsters added to contentTable")
         }
+        // Ensure ScrollPane scrolls to the top
+        scrollPane.scrollTo(0f, contentTable.height, 0f, 0f)
     }
 
     fun renderResize(uiCamera: OrthographicCamera) {

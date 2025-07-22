@@ -48,6 +48,8 @@ class MonsterManager(
     private val lodDistance = 20
     val positionTolerance = 0.2f
     private val targetProximityTolerance = 1.5f
+    internal val clusterSize = 16 // Cluster size in tiles (16x16)
+    private val clusters = mutableMapOf<Pair<Int, Int>, Array<Monster>>()
 
     init {
         font.color = Color.WHITE
@@ -59,6 +61,38 @@ class MonsterManager(
 
     fun getMonsters(): Array<Monster> {
         return monsters
+    }
+
+    fun getMonstersInCluster(clusterX: Int, clusterY: Int): Array<Monster> {
+        return clusters[Pair(clusterX, clusterY)] ?: Array()
+    }
+
+    fun getMonstersInClusters(clusterCoords: List<Pair<Int, Int>>): Array<Monster> {
+        val result = Array<Monster>()
+        clusterCoords.forEach { coord ->
+            clusters[coord]?.let { result.addAll(it) }
+        }
+        return result
+    }
+
+    private fun getClusterForPosition(x: Float, y: Float): Pair<Int, Int> {
+        return Pair((x / clusterSize).toInt(), (y / clusterSize).toInt())
+    }
+
+    private fun addMonsterToCluster(monster: Monster) {
+        val (clusterX, clusterY) = getClusterForPosition(monster.x, monster.y)
+        clusters.getOrPut(Pair(clusterX, clusterY)) { Array() }.add(monster)
+        Gdx.app.log("MonsterManager", "Added ${monster.stats.name} to cluster ($clusterX, $clusterY)")
+    }
+
+    private fun updateMonsterCluster(monster: Monster, oldX: Float, oldY: Float) {
+        val oldCluster = getClusterForPosition(oldX, oldY)
+        val newCluster = getClusterForPosition(monster.x, monster.y)
+        if (oldCluster != newCluster) {
+            clusters[oldCluster]?.removeValue(monster, true)
+            clusters.getOrPut(newCluster) { Array() }.add(monster)
+            Gdx.app.log("MonsterManager", "Moved ${monster.stats.name} from cluster $oldCluster to $newCluster")
+        }
     }
 
     fun loadMonsters() {
@@ -85,6 +119,8 @@ class MonsterManager(
 
         assetManager.finishLoading()
 
+        val clusterCountX = (mapManagerRef.mapTileWidth + clusterSize - 1) / clusterSize
+        val clusterCountY = (mapManagerRef.mapTileHeight + clusterSize - 1) / clusterSize
         for (i in 0 until monstersDir.list().size) {
             val categoryDir = monstersDir.list()[i]
             if (categoryDir.isDirectory) {
@@ -101,29 +137,35 @@ class MonsterManager(
                                 val sprite = Sprite(texture).apply {
                                     setSize(width * 1.333f, height * 1.333f)
                                 }
-                                var spawnX = Random.nextInt(mapManagerRef.mapTileWidth).toFloat()
-                                var spawnY = Random.nextInt(mapManagerRef.mapTileHeight).toFloat()
+                                // Select a random cluster
+                                val clusterX = Random.nextInt(clusterCountX)
+                                val clusterY = Random.nextInt(clusterCountY)
+                                var spawnX: Float
+                                var spawnY: Float
                                 var attempts = 0
-                                val maxAttempts = 100 // Prevent infinite loops
-                                while (!mapManagerRef.isWalkable(spawnX.toInt(), spawnY.toInt()) ||
-                                    isTileOccupied(spawnX.toInt(), spawnY.toInt(), null, null, monsters)) {
-                                    spawnX = Random.nextInt(mapManagerRef.mapTileWidth).toFloat()
-                                    spawnY = Random.nextInt(mapManagerRef.mapTileHeight).toFloat()
+                                val maxAttempts = 50
+                                do {
+                                    spawnX = (clusterX * clusterSize + Random.nextInt(clusterSize)).toFloat()
+                                    spawnY = (clusterY * clusterSize + Random.nextInt(clusterSize)).toFloat()
                                     attempts++
                                     if (attempts >= maxAttempts) {
-                                        Gdx.app.log("MonsterManager", "Failed to find valid spawn for ${stats.name} after $maxAttempts attempts")
+                                        Gdx.app.log("MonsterManager", "Failed to find valid spawn for ${stats.name} in cluster ($clusterX, $clusterY) after $maxAttempts attempts")
                                         return@repeat
                                     }
-                                }
-                                monsters.add(Monster(sprite, spawnX, spawnY, stats, stats.hp, Array<Vector2>(), 1.0f, 0f, 0f, spawnX.toInt(), spawnY.toInt(), null))
-                                Gdx.app.log("MonsterManager", "Spawned ${stats.name} at ($spawnX, $spawnY)")
+                                } while (spawnX >= mapManagerRef.mapTileWidth || spawnY >= mapManagerRef.mapTileHeight ||
+                                    !mapManagerRef.isWalkable(spawnX.toInt(), spawnY.toInt()) ||
+                                    isTileOccupied(spawnX.toInt(), spawnY.toInt(), null, null, monsters))
+                                val monster = Monster(sprite, spawnX, spawnY, stats, stats.hp, Array<Vector2>(), 1.0f, 0f, 0f, spawnX.toInt(), spawnY.toInt(), null)
+                                monsters.add(monster)
+                                addMonsterToCluster(monster)
+                                Gdx.app.log("MonsterManager", "Spawned ${stats.name} at ($spawnX, $spawnY) in cluster ($clusterX, $clusterY)")
                             }
                         }
                     }
                 }
             }
         }
-        Gdx.app.log("MonsterManager", "Loaded ${monsters.size} monsters")
+        Gdx.app.log("MonsterManager", "Loaded ${monsters.size} monsters across ${clusters.size} clusters")
     }
 
     fun update(delta: Float) {
@@ -138,19 +180,31 @@ class MonsterManager(
             camera.viewportHeight * zoom
         )
 
+        // Get clusters intersecting the viewport
+        val minClusterX = max(0, ((viewport.x / mapManagerRef.tileSize) / clusterSize).toInt())
+        val maxClusterX = min((mapManagerRef.mapTileWidth / clusterSize).toInt(), ((viewport.x + viewport.width) / mapManagerRef.tileSize / clusterSize).toInt())
+        val minClusterY = max(0, ((viewport.y / mapManagerRef.tileSize) / clusterSize).toInt())
+        val maxClusterY = min((mapManagerRef.mapTileHeight / clusterSize).toInt(), ((viewport.y + viewport.height) / mapManagerRef.tileSize / clusterSize).toInt())
+        val activeClusters = mutableListOf<Pair<Int, Int>>()
+        for (x in minClusterX..maxClusterX) {
+            for (y in minClusterY..maxClusterY) {
+                activeClusters.add(Pair(x, y))
+            }
+        }
+        Gdx.app.log("MonsterManager", "Processing ${activeClusters.size} clusters: $activeClusters")
+
         coarseTimer -= delta
         if (coarseTimer <= 0f) {
             coarseWaypoint = null
             coarseTimer = coarseRecalcTimer
         }
 
-        // Create a snapshot of monsters
-        val monsterSnapshot = Array<Monster>().apply { addAll(monsters) }
+        // Create a snapshot of monsters in active clusters
+        val monsterSnapshot = getMonstersInClusters(activeClusters)
 
         // Collect monsters to update
         val monstersToUpdate = mutableListOf<Monster>()
-        for (i in 0 until monsterSnapshot.size) {
-            val monster = monsterSnapshot[i]
+        for (monster in monsterSnapshot) {
             val worldX = monster.x * mapManagerRef.tileSize
             val worldY = monster.y * mapManagerRef.tileSize
             if (viewport.contains(worldX, worldY)) {
@@ -166,12 +220,14 @@ class MonsterManager(
         // Update monsters
         val monstersToDespawn = mutableListOf<Monster>()
         var pathfindingCount = 0
-        for (j in 0 until monstersToUpdate.size) {
-            val monster = monstersToUpdate[j]
+        for (monster in monstersToUpdate) {
+            val oldX = monster.x
+            val oldY = monster.y
             val dx = player.playerX - monster.x
             val dy = player.playerY - monster.y
             val dist = max(abs(dx), abs(dy))
             monster.update(delta, pathFinder, player, this, mapManagerRef, monsterSnapshot)
+            updateMonsterCluster(monster, oldX, oldY)
             monster.pathRecalcTimer -= delta
             monster.isAttackedTimer -= delta
             monster.criticalHitTimer -= delta
@@ -246,8 +302,9 @@ class MonsterManager(
             }
         }
 
-        for (i in 0 until monstersToDespawn.size) {
-            val monster = monstersToDespawn[i]
+        for (monster in monstersToDespawn) {
+            val cluster = getClusterForPosition(monster.x, monster.y)
+            clusters[cluster]?.removeValue(monster, true)
             monsters.removeValue(monster, true)
             Gdx.app.log("MonsterManager", "${monster.stats.name} despawned at (${monster.x}, ${monster.y})")
         }
@@ -280,8 +337,7 @@ class MonsterManager(
     }
 
     fun isTileOccupied(x: Int, y: Int, excludePlayer: Player? = null, excludeMonster: Monster? = null, monsterSnapshot: Array<Monster>): Boolean {
-        for (i in 0 until monsterSnapshot.size) {
-            val monster = monsterSnapshot[i]
+        for (monster in monsterSnapshot) {
             if (monster != excludeMonster && monster.x.toInt() == x && monster.y.toInt() == y) {
                 Gdx.app.log("MonsterManager", "Tile ($x, $y) occupied by monster ${monster.stats.name}")
                 return true
@@ -304,10 +360,21 @@ class MonsterManager(
             camera.viewportHeight * camera.zoom
         )
 
+        // Get clusters intersecting the viewport
+        val minClusterX = max(0, ((viewport.x / tileSize) / clusterSize).toInt())
+        val maxClusterX = min((mapManagerRef.mapTileWidth / clusterSize).toInt(), ((viewport.x + viewport.width) / tileSize / clusterSize).toInt())
+        val minClusterY = max(0, ((viewport.y / tileSize) / clusterSize).toInt())
+        val maxClusterY = min((mapManagerRef.mapTileHeight / clusterSize).toInt(), ((viewport.y + viewport.height) / tileSize / clusterSize).toInt())
+        val activeClusters = mutableListOf<Pair<Int, Int>>()
+        for (x in minClusterX..maxClusterX) {
+            for (y in minClusterY..maxClusterY) {
+                activeClusters.add(Pair(x, y))
+            }
+        }
+
         batch.projectionMatrix = camera.combined
         batch.begin()
-        for (i in 0 until monsters.size) {
-            val monster = monsters[i]
+        for (monster in getMonstersInClusters(activeClusters)) {
             val worldX = monster.x * tileSize
             val worldY = monster.y * tileSize
             if (viewport.contains(worldX, worldY)) {
@@ -319,17 +386,16 @@ class MonsterManager(
 
         shapeRenderer.projectionMatrix = camera.combined
         shapeRenderer.begin(ShapeType.Filled)
-        for (i in 0 until monsters.size) {
-            val monster = monsters[i]
+        for (monster in getMonstersInClusters(activeClusters)) {
             val worldX = monster.x * tileSize
             val worldY = monster.y * tileSize
             if (viewport.contains(worldX, worldY)) {
                 batch.begin()
-                // Filter out "(old)" and "(new)" from the monster name (case-insensitive)
+                // Filter out "(old)" and "(new)" from the monster name
                 val filteredName = monster.stats.name.replace(Regex("\\s*\\((?i)(old|new)\\)", RegexOption.IGNORE_CASE), "").trim()
                 val layout = GlyphLayout(font, filteredName)
                 val nameX = worldX + (monster.sprite.width - layout.width) / 2f // Center name
-                val nameY = worldY + monster.sprite.height + layout.height + 20f // Above sprite with padding
+                val nameY = worldY + monster.sprite.height + layout.height + 15f // Above sprite with padding
                 font.draw(batch, layout, nameX, nameY)
                 batch.end()
 
@@ -354,8 +420,7 @@ class MonsterManager(
         shapeRenderer.end()
 
         shapeRenderer.begin(ShapeType.Line)
-        for (i in 0 until monsters.size) {
-            val monster = monsters[i]
+        for (monster in getMonstersInClusters(activeClusters)) {
             val worldX = monster.x * tileSize
             val worldY = monster.y * tileSize
             if (viewport.contains(worldX, worldY)) {
