@@ -160,9 +160,10 @@ class MyGame : ApplicationAdapter() {
         val maxX = minOf((mapManager.mapTileWidth - 1).toFloat(), (cameraManager.camera.position.x + viewportWidth / 2) / mapManager.tileSize).toInt()
         val minY = maxOf(0f, (cameraManager.camera.position.y - viewportHeight / 2) / mapManager.tileSize).toInt()
         val maxY = minOf((mapManager.mapTileHeight - 1).toFloat(), (cameraManager.camera.position.y + viewportHeight / 2) / mapManager.tileSize).toInt()
+        val monsterSnapshot = monsterManager.getMonsters()
         for (x in minX..maxX) {
             for (y in minY..maxY) {
-                shapeRenderer.color = if (mapManager.isWalkable(x, y) && !monsterManager.isTileOccupied(x, y)) {
+                shapeRenderer.color = if (mapManager.isWalkable(x, y) && !monsterManager.isTileOccupied(x, y, null, null, monsterSnapshot)) {
                     Color.GREEN.cpy().apply { a = 0.3f }
                 } else {
                     Color.RED.cpy().apply { a = 0.3f }

@@ -45,8 +45,8 @@ class MonsterManager(
     private val attackRange = 5
     private val maxPathfindingPerFrame = 5
     private val lodDistance = 20
-    val positionTolerance = 0.2f // Tolerance for snapping to waypoints
-    private val targetProximityTolerance = 1.5f // Allow paths ending within 1.5 tiles of target
+    val positionTolerance = 0.2f
+    private val targetProximityTolerance = 1.5f
 
     init {
         font.color = Color.WHITE
@@ -68,9 +68,11 @@ class MonsterManager(
         }
 
         val texturePaths = mutableListOf<String>()
-        monstersDir.list().forEach { categoryDir ->
+        for (i in 0 until monstersDir.list().size) {
+            val categoryDir = monstersDir.list()[i]
             if (categoryDir.isDirectory) {
-                categoryDir.list().forEach { file ->
+                for (j in 0 until categoryDir.list().size) {
+                    val file = categoryDir.list()[j]
                     if (file.extension() == "png") {
                         val texturePath = "monster/${categoryDir.name()}/${file.name()}"
                         texturePaths.add(texturePath)
@@ -82,9 +84,11 @@ class MonsterManager(
 
         assetManager.finishLoading()
 
-        monstersDir.list().forEach { categoryDir ->
+        for (i in 0 until monstersDir.list().size) {
+            val categoryDir = monstersDir.list()[i]
             if (categoryDir.isDirectory) {
-                categoryDir.list().forEach { file ->
+                for (j in 0 until categoryDir.list().size) {
+                    val file = categoryDir.list()[j]
                     if (file.extension() == "png") {
                         val statsFile = categoryDir.child(file.nameWithoutExtension() + ".json")
                         if (statsFile.exists()) {
@@ -95,7 +99,7 @@ class MonsterManager(
                             }
                             var spawnX = Random.nextInt(mapManagerRef.mapTileWidth).toFloat()
                             var spawnY = Random.nextInt(mapManagerRef.mapTileHeight).toFloat()
-                            while (!mapManagerRef.isWalkable(spawnX.toInt(), spawnY.toInt()) || isTileOccupied(spawnX.toInt(), spawnY.toInt())) {
+                            while (!mapManagerRef.isWalkable(spawnX.toInt(), spawnY.toInt()) || isTileOccupied(spawnX.toInt(), spawnY.toInt(), null, null, monsters)) {
                                 spawnX = Random.nextInt(mapManagerRef.mapTileWidth).toFloat()
                                 spawnY = Random.nextInt(mapManagerRef.mapTileHeight).toFloat()
                             }
@@ -126,8 +130,13 @@ class MonsterManager(
             coarseTimer = coarseRecalcTimer
         }
 
-        val monstersToUpdate = Array<Monster>()
-        monsters.forEach { monster ->
+        // Create a snapshot of monsters
+        val monsterSnapshot = Array<Monster>().apply { addAll(monsters) }
+
+        // Collect monsters to update
+        val monstersToUpdate = mutableListOf<Monster>()
+        for (i in 0 until monsterSnapshot.size) {
+            val monster = monsterSnapshot[i]
             val worldX = monster.x * mapManagerRef.tileSize
             val worldY = monster.y * mapManagerRef.tileSize
             if (viewport.contains(worldX, worldY)) {
@@ -140,13 +149,15 @@ class MonsterManager(
             }
         }
 
+        // Update monsters
         val monstersToDespawn = mutableListOf<Monster>()
         var pathfindingCount = 0
-        for (monster in monstersToUpdate) {
+        for (j in 0 until monstersToUpdate.size) {
+            val monster = monstersToUpdate[j]
             val dx = player.playerX - monster.x
             val dy = player.playerY - monster.y
             val dist = max(abs(dx), abs(dy))
-            monster.update(delta, pathFinder, player, this, mapManagerRef)
+            monster.update(delta, pathFinder, player, this, mapManagerRef, monsterSnapshot)
             monster.pathRecalcTimer -= delta
             monster.isAttackedTimer -= delta
             monster.criticalHitTimer -= delta
@@ -160,27 +171,26 @@ class MonsterManager(
             if (dist <= aggroRange && monster.pathRecalcTimer <= 0f && pathfindingCount < maxPathfindingPerFrame) {
                 if (dist <= lodDistance) {
                     val target = Vector2(player.playerTileX.toFloat() + 0.5f, player.playerTileY.toFloat() + 0.5f)
-                    // Only recalculate if the path is invalid or the player has moved significantly
-                    if (monster.currentPath.size == 0 || !isPathValid(monster, target.x.toInt(), target.y.toInt()) || hasPlayerMovedSignificantly(monster, target)) {
-                        val path = pathFinder.findPath(monster.x.toInt(), monster.y.toInt(), target.x.toInt(), target.y.toInt(), this)
+                    if (monster.currentPath.size == 0 || !isPathValid(monster, target.x.toInt(), target.y.toInt(), monsterSnapshot) || hasPlayerMovedSignificantly(monster, target)) {
+                        val path = pathFinder.findPath(monster.x.toInt(), monster.y.toInt(), target.x.toInt(), target.y.toInt(), this, monsterSnapshot)
                         monster.currentPath.clear()
-                        if (path != null && path.size > 0) {
-                            // Filter out current position and redundant waypoints
-                            val filteredPath = path.filterNot {
-                                it.x.toInt() == monster.x.toInt() && it.y.toInt() == monster.y.toInt() ||
-                                    (monster.currentPath.contains(it) && it != path.last()) ||
-                                    // Skip waypoints not aligned with player if within attack range
-                                    (dist <= attackRange && it != path.last() && !(abs(it.x - target.x) <= attackRange && it.y == target.y || abs(it.y - target.y) <= attackRange && it.x == target.x))
+                        if (path.size > 0) {
+                            val filteredPath = Array<Vector2>()
+                            for (k in 0 until path.size) {
+                                val point = path[k]
+                                if (!(point.x.toInt() == monster.x.toInt() && point.y.toInt() == monster.y.toInt()) &&
+                                    !(monster.currentPath.contains(point) && point != path[path.size - 1]) &&
+                                    !(dist <= attackRange && point != path[path.size - 1] && !(abs(point.x - target.x) <= attackRange && point.y == target.y || abs(point.y - target.y) <= attackRange && point.x == target.x))
+                                ) {
+                                    filteredPath.add(point)
+                                }
                             }
-                            val gdxArray = Array<Vector2>(filteredPath.size)
-                            filteredPath.forEach { gdxArray.add(it) }
-                            monster.currentPath.addAll(gdxArray)
-                            Gdx.app.log("MonsterManager", "Path set for ${monster.stats.name} to ($target): ${gdxArray.joinToString()}")
-                            // Set longer recalc timer if within attack range
+                            monster.currentPath.addAll(filteredPath)
+                            Gdx.app.log("MonsterManager", "Path set for ${monster.stats.name} to ($target): ${filteredPath.joinToString()}")
                             monster.pathRecalcTimer = if (dist <= attackRange) 2.0f else 1.0f
                         } else {
                             Gdx.app.log("MonsterManager", "No valid path found for ${monster.stats.name} to ($target)")
-                            monster.pathRecalcTimer = 2.0f // Delay recalculation if no path found
+                            monster.pathRecalcTimer = 2.0f
                         }
                         pathfindingCount++
                     }
@@ -189,7 +199,7 @@ class MonsterManager(
                     val moveY = sign(dy) * min(delta * monster.stats.speed, abs(dy))
                     val newX = monster.x + moveX
                     val newY = monster.y + moveY
-                    if (mapManager.isWalkable(newX.toInt(), newY.toInt()) && !isTileOccupied(newX.toInt(), newY.toInt(), player, monster)) {
+                    if (mapManager.isWalkable(newX.toInt(), newY.toInt()) && !isTileOccupied(newX.toInt(), newY.toInt(), player, monster, monsterSnapshot)) {
                         monster.x = newX
                         monster.y = newY
                         Gdx.app.log("MonsterManager", "${monster.stats.name} moved to ($newX, $newY)")
@@ -221,23 +231,22 @@ class MonsterManager(
             }
         }
 
-        // Perform despawn after iteration to avoid modifying monsters during loop
-        monstersToDespawn.forEach { monster ->
+        for (i in 0 until monstersToDespawn.size) {
+            val monster = monstersToDespawn[i]
             monsters.removeValue(monster, true)
             Gdx.app.log("MonsterManager", "${monster.stats.name} despawned at (${monster.x}, ${monster.y})")
         }
     }
 
-    private fun isPathValid(monster: Monster, targetX: Int, targetY: Int): Boolean {
+    private fun isPathValid(monster: Monster, targetX: Int, targetY: Int, monsterSnapshot: Array<Monster>): Boolean {
         if (monster.currentPath.size == 0) return false
-        val lastWaypoint = monster.currentPath.last()
-        // Allow paths that end within proximityTolerance or attack range of the target
+        val lastWaypoint = monster.currentPath[monster.currentPath.size - 1]
         val distanceToTarget = max(abs(lastWaypoint.x.toInt() - targetX), abs(lastWaypoint.y.toInt() - targetY))
         val isValid = (distanceToTarget <= targetProximityTolerance ||
             (abs(lastWaypoint.x - targetX) <= attackRange && lastWaypoint.y.toInt() == targetY) ||
             (abs(lastWaypoint.y - targetY) <= attackRange && lastWaypoint.x.toInt() == targetX)) &&
             mapManager.isWalkable(lastWaypoint.x.toInt(), lastWaypoint.y.toInt()) &&
-            !isTileOccupiedSafe(lastWaypoint.x.toInt(), lastWaypoint.y.toInt(), player, monster)
+            !isTileOccupied(lastWaypoint.x.toInt(), lastWaypoint.y.toInt(), player, monster, monsterSnapshot)
         if (!isValid) {
             Gdx.app.log("MonsterManager", "Path invalid for ${monster.stats.name}: target=($targetX, $targetY), lastWaypoint=$lastWaypoint, distance=$distanceToTarget")
         }
@@ -245,8 +254,7 @@ class MonsterManager(
     }
 
     private fun hasPlayerMovedSignificantly(monster: Monster, target: Vector2): Boolean {
-        // Check if the player's position has changed significantly since the last path calculation
-        val lastTarget = monster.currentPath.lastOrNull()
+        val lastTarget = if (monster.currentPath.size > 0) monster.currentPath[monster.currentPath.size - 1] else null
         if (lastTarget == null) return true
         val distance = max(abs(target.x - lastTarget.x), abs(target.y - lastTarget.y))
         val significantMove = distance > targetProximityTolerance
@@ -256,17 +264,19 @@ class MonsterManager(
         return significantMove
     }
 
-    fun isTileOccupiedSafe(x: Int, y: Int, excludePlayer: Player? = null, excludeMonster: Monster? = null): Boolean {
-        // Create a snapshot of monsters to avoid nested iteration
-        val monsterSnapshot = monsters.items.take(monsters.size).toList()
-        val isOccupiedByMonster = monsterSnapshot.any { monster ->
-            monster != excludeMonster && monster.x.toInt() == x && monster.y.toInt() == y
+    fun isTileOccupied(x: Int, y: Int, excludePlayer: Player? = null, excludeMonster: Monster? = null, monsterSnapshot: Array<Monster>): Boolean {
+        for (i in 0 until monsterSnapshot.size) {
+            val monster = monsterSnapshot[i]
+            if (monster != excludeMonster && monster.x.toInt() == x && monster.y.toInt() == y) {
+                Gdx.app.log("MonsterManager", "Tile ($x, $y) occupied by monster ${monster.stats.name}")
+                return true
+            }
         }
         val isOccupiedByPlayer = excludePlayer == null && player.playerTileX == x && player.playerTileY == y && !player.isDead()
-        if (isOccupiedByMonster || isOccupiedByPlayer) {
-            Gdx.app.log("MonsterManager", "Tile ($x, $y) occupied by ${if (isOccupiedByMonster) "monster" else "player"}")
+        if (isOccupiedByPlayer) {
+            Gdx.app.log("MonsterManager", "Tile ($x, $y) occupied by player")
         }
-        return isOccupiedByMonster || isOccupiedByPlayer
+        return isOccupiedByPlayer
     }
 
     fun render(camera: OrthographicCamera, tileSize: Float) {
@@ -281,7 +291,8 @@ class MonsterManager(
 
         batch.projectionMatrix = camera.combined
         batch.begin()
-        monsters.forEach { monster ->
+        for (i in 0 until monsters.size) {
+            val monster = monsters[i]
             val worldX = monster.x * tileSize
             val worldY = monster.y * tileSize
             if (viewport.contains(worldX, worldY)) {
@@ -293,7 +304,8 @@ class MonsterManager(
 
         shapeRenderer.projectionMatrix = camera.combined
         shapeRenderer.begin(ShapeType.Filled)
-        monsters.forEach { monster ->
+        for (i in 0 until monsters.size) {
+            val monster = monsters[i]
             val worldX = monster.x * tileSize
             val worldY = monster.y * tileSize
             if (viewport.contains(worldX, worldY)) {
@@ -320,7 +332,8 @@ class MonsterManager(
         shapeRenderer.end()
 
         shapeRenderer.begin(ShapeType.Line)
-        monsters.forEach { monster ->
+        for (i in 0 until monsters.size) {
+            val monster = monsters[i]
             val worldX = monster.x * tileSize
             val worldY = monster.y * tileSize
             if (viewport.contains(worldX, worldY)) {
@@ -343,10 +356,6 @@ class MonsterManager(
             }
         }
         shapeRenderer.end()
-    }
-
-    fun isTileOccupied(x: Int, y: Int, excludePlayer: Player? = null, excludeMonster: Monster? = null): Boolean {
-        return isTileOccupiedSafe(x, y, excludePlayer, excludeMonster)
     }
 
     fun dispose() {
@@ -373,7 +382,7 @@ data class Monster(
     var hitTimer: Float = 0f,
     var isInViewport: Boolean = false
 ) {
-    fun update(delta: Float, pathFinder: PathFinder, player: Player, monsterManager: MonsterManager, mapManager: MapManager) {
+    fun update(delta: Float, pathFinder: PathFinder, player: Player, monsterManager: MonsterManager, mapManager: MapManager, monsterSnapshot: Array<Monster>) {
         if (player.isDead()) return
 
         if (currentPath.size > 0) {
@@ -391,8 +400,7 @@ data class Monster(
                 val newX = x + moveX
                 val newY = y + moveY
 
-                // Check the walkability of the target tile
-                if (mapManager.isWalkable(targetTileX, targetTileY) && !monsterManager.isTileOccupiedSafe(targetTileX, targetTileY, player, this)) {
+                if (mapManager.isWalkable(targetTileX, targetTileY) && !monsterManager.isTileOccupied(targetTileX, targetTileY, player, this, monsterSnapshot)) {
                     x = newX
                     y = newY
                     Gdx.app.log("Monster", "${stats.name} moved to ($newX, $newY)")
@@ -402,7 +410,6 @@ data class Monster(
                     return
                 }
 
-                // Snap to target tile if close enough
                 if (abs(x - target.x) <= monsterManager.positionTolerance && abs(y - target.y) <= monsterManager.positionTolerance) {
                     x = target.x
                     y = target.y
@@ -416,11 +423,9 @@ data class Monster(
                 Gdx.app.log("Monster", "${stats.name} reached waypoint ($target), remaining path: ${currentPath.size}")
             }
 
-            // Clear path only if the final waypoint is reached
             if (currentPath.size == 0) {
                 Gdx.app.log("Monster", "${stats.name} reached final waypoint, clearing path")
                 currentPath.clear()
-                // Set longer recalc timer if within attack range of player
                 if (canAttack(player.playerX, player.playerY)) {
                     pathRecalcTimer = 2.0f
                 }

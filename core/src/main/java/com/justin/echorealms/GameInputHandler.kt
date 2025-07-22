@@ -85,7 +85,9 @@ class GameInputHandler(
         val tileX = floor(worldPos.x / tileSize).toInt()
         val tileY = floor(worldPos.y / tileSize).toInt()
 
-        monsterManager.getMonsters().forEach { monster ->
+        val monsterSnapshot = monsterManager.getMonsters()
+        for (i in 0 until monsterSnapshot.size) {
+            val monster = monsterSnapshot[i]
             if (abs(monster.x - tileX) <= 0.5f && abs(monster.y - tileY) <= 0.5f && !monster.isDead()) {
                 player.targetedMonster = monster
                 Gdx.app.log("GameInputHandler", "Targeted monster: ${monster.stats.name} at ($tileX, $tileY)")
@@ -98,9 +100,17 @@ class GameInputHandler(
                 movementManager.moveToTile(player, tileX, tileY, Gdx.graphics.deltaTime)
                 Gdx.app.log("GameInputHandler", "Initiated movement to ($tileX, $tileY)")
             } else {
-                uiManager.setWorldMapOpen(false)
-                movementManager.moveToTile(player, tileX, tileY, Gdx.graphics.deltaTime)
-                Gdx.app.log("GameInputHandler", "Initiated movement to ($tileX, $tileY) from world map")
+                val path = pathFinder.findPath(
+                    player.playerTileX, player.playerTileY,
+                    tileX, tileY, monsterManager, monsterSnapshot
+                )
+                if (path.size > 0) {
+                    uiManager.setWorldMapOpen(false)
+                    movementManager.moveToTile(player, tileX, tileY, Gdx.graphics.deltaTime)
+                    Gdx.app.log("GameInputHandler", "Initiated movement to ($tileX, $tileY) from world map")
+                } else {
+                    Gdx.app.log("GameInputHandler", "No valid path found to ($tileX, $tileY) from world map")
+                }
             }
         }
 

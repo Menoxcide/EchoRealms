@@ -39,18 +39,19 @@ class PathFinder(
     }
 
     private fun initializeClusters() {
+        val emptyMonsters = Array<Monster>()
         for (x in 0 until mapManager.mapTileWidth step clusterSize) {
             for (y in 0 until mapManager.mapTileHeight step clusterSize) {
                 val maxX = min(x + clusterSize - 1, mapManager.mapTileWidth - 1)
                 val maxY = min(y + clusterSize - 1, mapManager.mapTileHeight - 1)
                 val entrances = mutableListOf<Vector2>()
                 for (i in x..maxX) {
-                    if (isWalkable(i, y, null)) entrances.add(Vector2(i.toFloat(), y.toFloat()))
-                    if (isWalkable(i, maxY, null)) entrances.add(Vector2(i.toFloat(), maxY.toFloat()))
+                    if (isWalkable(i, y, null, emptyMonsters)) entrances.add(Vector2(i.toFloat(), y.toFloat()))
+                    if (isWalkable(i, maxY, null, emptyMonsters)) entrances.add(Vector2(i.toFloat(), maxY.toFloat()))
                 }
                 for (j in y..maxY) {
-                    if (isWalkable(x, j, null)) entrances.add(Vector2(x.toFloat(), j.toFloat()))
-                    if (isWalkable(maxX, j, null)) entrances.add(Vector2(maxX.toFloat(), j.toFloat()))
+                    if (isWalkable(x, j, null, emptyMonsters)) entrances.add(Vector2(x.toFloat(), j.toFloat()))
+                    if (isWalkable(maxX, j, null, emptyMonsters)) entrances.add(Vector2(maxX.toFloat(), j.toFloat()))
                 }
                 clusters.add(Cluster(x, y, maxX, maxY, entrances))
             }
@@ -58,13 +59,13 @@ class PathFinder(
         Gdx.app.log("PathFinder", "Initialized ${clusters.size} clusters")
     }
 
-    fun findPath(startX: Int, startY: Int, endX: Int, endY: Int, monsterManager: MonsterManager? = null): Array<Vector2> {
+    fun findPath(startX: Int, startY: Int, endX: Int, endY: Int, monsterManager: MonsterManager?, monsterSnapshot: Array<Monster>): Array<Vector2> {
         val path = Array<Vector2>()
         var targetX = endX
         var targetY = endY
-        if (!isWalkable(endX, endY, monsterManager)) {
+        if (!isWalkable(endX, endY, monsterManager, monsterSnapshot)) {
             Gdx.app.log("PathFinder", "Target tile ($endX, $endY) is unwalkable or occupied - finding nearest alternative")
-            val nearest = findNearestWalkable(startX, startY, endX, endY, monsterManager)
+            val nearest = findNearestWalkable(startX, startY, endX, endY, monsterManager, monsterSnapshot)
             if (nearest == null) {
                 Gdx.app.log("PathFinder", "No nearest walkable tile found")
                 return path
@@ -82,13 +83,13 @@ class PathFinder(
         val startCluster = getCluster(startX, startY)
         val endCluster = getCluster(targetX, targetY)
         if (startCluster != endCluster && (abs(startX - targetX) > maxSearchRadius || abs(startY - targetY) > maxSearchRadius)) {
-            return findHierarchicalPath(startX, startY, targetX, targetY, monsterManager)
+            return findHierarchicalPath(startX, startY, targetX, targetY, monsterManager, monsterSnapshot)
         }
 
-        return findAStarPath(startX, startY, targetX, targetY, monsterManager)
+        return findAStarPath(startX, startY, targetX, targetY, monsterManager, monsterSnapshot)
     }
 
-    private fun findAStarPath(startX: Int, startY: Int, endX: Int, endY: Int, monsterManager: MonsterManager?): Array<Vector2> {
+    private fun findAStarPath(startX: Int, startY: Int, endX: Int, endY: Int, monsterManager: MonsterManager?, monsterSnapshot: Array<Monster>): Array<Vector2> {
         val path = Array<Vector2>()
         data class Node(val pos: Vector2, val fScore: Float) : Comparable<Node> {
             override fun compareTo(other: Node) = fScore.compareTo(other.fScore)
@@ -111,14 +112,15 @@ class PathFinder(
             val current = openSet.poll().pos
             if (current == end) {
                 reconstructPath(cameFrom, end, path)
-                smoothPath(path, monsterManager)
+                smoothPath(path, monsterManager, monsterSnapshot)
                 Gdx.app.log("PathFinder", "Path found: ${path.joinToString()}")
                 return path
             }
 
             closedSet.add(current)
-            for (neighbor in getNeighbors(current)) {
-                if (closedSet.contains(neighbor) || !isWalkable(neighbor.x.toInt(), neighbor.y.toInt(), monsterManager)) {
+            for (i in 0 until getNeighbors(current).size) {
+                val neighbor = getNeighbors(current)[i]
+                if (closedSet.contains(neighbor) || !isWalkable(neighbor.x.toInt(), neighbor.y.toInt(), monsterManager, monsterSnapshot)) {
                     Gdx.app.log("PathFinder", "Skipping neighbor ($neighbor): in closed set or unwalkable")
                     continue
                 }
@@ -143,7 +145,7 @@ class PathFinder(
         return path
     }
 
-    private fun findHierarchicalPath(startX: Int, startY: Int, endX: Int, endY: Int, monsterManager: MonsterManager?): Array<Vector2> {
+    private fun findHierarchicalPath(startX: Int, startY: Int, endX: Int, endY: Int, monsterManager: MonsterManager?, monsterSnapshot: Array<Monster>): Array<Vector2> {
         val path = Array<Vector2>()
         val startCluster = getCluster(startX, startY)
         val endCluster = getCluster(endX, endY)
@@ -156,19 +158,20 @@ class PathFinder(
 
         var prevPoint = Vector2(startX.toFloat(), startY.toFloat())
         path.add(prevPoint)
-        for (entrance in clusterPath) {
-            val intraPath = findAStarPath(prevPoint.x.toInt(), prevPoint.y.toInt(), entrance.x.toInt(), entrance.y.toInt(), monsterManager)
+        for (i in 0 until clusterPath.size) {
+            val entrance = clusterPath[i]
+            val intraPath = findAStarPath(prevPoint.x.toInt(), prevPoint.y.toInt(), entrance.x.toInt(), entrance.y.toInt(), monsterManager, monsterSnapshot)
             if (intraPath.size > 0) {
                 path.addAll(intraPath)
-                prevPoint = intraPath.last()
+                prevPoint = intraPath[intraPath.size - 1]
             }
         }
-        val finalPath = findAStarPath(prevPoint.x.toInt(), prevPoint.y.toInt(), endX, endY, monsterManager)
+        val finalPath = findAStarPath(prevPoint.x.toInt(), prevPoint.y.toInt(), endX, endY, monsterManager, monsterSnapshot)
         if (finalPath.size > 0) {
             path.addAll(finalPath)
         }
 
-        smoothPath(path, monsterManager)
+        smoothPath(path, monsterManager, monsterSnapshot)
         Gdx.app.log("PathFinder", "Hierarchical path found: ${path.joinToString()}")
         return path
     }
@@ -176,8 +179,8 @@ class PathFinder(
     private fun findClusterPath(startCluster: Cluster, endCluster: Cluster): Array<Vector2> {
         val path = Array<Vector2>()
         if (startCluster.entrances.isNotEmpty() && endCluster.entrances.isNotEmpty()) {
-            path.add(startCluster.entrances.first())
-            path.add(endCluster.entrances.first())
+            path.add(startCluster.entrances[0])
+            path.add(endCluster.entrances[0])
         }
         return path
     }
@@ -185,11 +188,16 @@ class PathFinder(
     private fun getCluster(x: Int, y: Int): Cluster {
         val clusterX = (x / clusterSize) * clusterSize
         val clusterY = (y / clusterSize) * clusterSize
-        return clusters.find { it.minX == clusterX && it.minY == clusterY }
-            ?: clusters.first()
+        for (i in 0 until clusters.size) {
+            val cluster = clusters[i]
+            if (cluster.minX == clusterX && cluster.minY == clusterY) {
+                return cluster
+            }
+        }
+        return clusters[0]
     }
 
-    private fun smoothPath(path: Array<Vector2>, monsterManager: MonsterManager?) {
+    private fun smoothPath(path: Array<Vector2>, monsterManager: MonsterManager?, monsterSnapshot: Array<Monster>) {
         if (path.size < 2) return
         val smoothed = Array<Vector2>()
         smoothed.add(path[0])
@@ -198,7 +206,7 @@ class PathFinder(
             val p0 = path[i - 1]
             val p1 = path[i]
             val p2 = path[i + 1]
-            if (canSmooth(p0, p2, monsterManager)) {
+            if (canSmooth(p0, p2, monsterManager, monsterSnapshot)) {
                 i++
             } else {
                 smoothed.add(p1)
@@ -210,7 +218,7 @@ class PathFinder(
         path.addAll(smoothed)
     }
 
-    private fun canSmooth(start: Vector2, end: Vector2, monsterManager: MonsterManager?): Boolean {
+    private fun canSmooth(start: Vector2, end: Vector2, monsterManager: MonsterManager?, monsterSnapshot: Array<Monster>): Boolean {
         val x0 = start.x.toInt()
         val y0 = start.y.toInt()
         val x1 = end.x.toInt()
@@ -224,7 +232,7 @@ class PathFinder(
         var y = y0
 
         while (true) {
-            if (!isWalkable(x, y, monsterManager)) return false
+            if (!isWalkable(x, y, monsterManager, monsterSnapshot)) return false
             if (x == x1 && y == y1) break
             val e2 = 2 * err
             if (e2 > -dy) {
@@ -239,7 +247,7 @@ class PathFinder(
         return true
     }
 
-    private fun findNearestWalkable(startX: Int, startY: Int, endX: Int, endY: Int, monsterManager: MonsterManager?): Vector2? {
+    private fun findNearestWalkable(startX: Int, startY: Int, endX: Int, endY: Int, monsterManager: MonsterManager?, monsterSnapshot: Array<Monster>): Vector2? {
         val queue = Array<Vector2>()
         val visited = Array(mapManager.mapTileWidth) { BooleanArray(mapManager.mapTileHeight) { false } }
         queue.add(Vector2(endX.toFloat(), endY.toFloat()))
@@ -253,16 +261,18 @@ class PathFinder(
         var radius = 0
         while (queue.size > 0 && radius < 10) {
             val size = queue.size
-            repeat(size) {
-                val current = queue.removeIndex(0)
+            for (i in 0 until size) {
+                val current = queue[0]
+                queue.removeIndex(0)
                 val x = current.x.toInt()
                 val y = current.y.toInt()
                 if (x in 0 until mapManager.mapTileWidth && y in 0 until mapManager.mapTileHeight &&
-                    mapManager.isWalkable(x, y) && (monsterManager == null || !monsterManager.isTileOccupied(x, y))) {
+                    mapManager.isWalkable(x, y) && (monsterManager == null || !monsterManager.isTileOccupied(x, y, null, null, monsterSnapshot))) {
                     Gdx.app.log("PathFinder", "Found nearest walkable tile at ($x, $y) after searching radius $radius")
                     return current
                 }
-                for (dir in directions) {
+                for (j in 0 until directions.size) {
+                    val dir = directions[j]
                     val nx = (x + dir.x).toInt()
                     val ny = (y + dir.y).toInt()
                     if (nx in 0 until mapManager.mapTileWidth && ny in 0 until mapManager.mapTileHeight && !visited[nx][ny]) {
@@ -278,13 +288,13 @@ class PathFinder(
         return null
     }
 
-    private fun isWalkable(x: Int, y: Int, monsterManager: MonsterManager?): Boolean {
+    private fun isWalkable(x: Int, y: Int, monsterManager: MonsterManager?, monsterSnapshot: Array<Monster>): Boolean {
         if (x !in 0 until mapManager.mapTileWidth || y !in 0 until mapManager.mapTileHeight) {
             Gdx.app.log("PathFinder", "Tile ($x, $y): out of bounds")
             return false
         }
         val isMapWalkable = mapManager.isWalkable(x, y)
-        val isOccupied = monsterManager?.isTileOccupied(x, y) ?: false
+        val isOccupied = monsterManager?.isTileOccupied(x, y, null, null, monsterSnapshot) ?: false
         val cost = costMap.getValue(Vector2(x.toFloat(), y.toFloat()))
         val walkable = isMapWalkable && !isOccupied && cost != Float.MAX_VALUE
         Gdx.app.log("PathFinder", "Tile ($x, $y): walkable=$isMapWalkable, occupied=$isOccupied, cost=$cost, result=$walkable")
@@ -306,7 +316,8 @@ class PathFinder(
         val directions = listOf(
             Vector2(0f, 1f), Vector2(0f, -1f), Vector2(-1f, 0f), Vector2(1f, 0f)
         )
-        for (dir in directions) {
+        for (i in 0 until directions.size) {
+            val dir = directions[i]
             val newX = current.x + dir.x
             val newY = current.y + dir.y
             if (newX.toInt() in 0 until mapManager.mapTileWidth && newY.toInt() in 0 until mapManager.mapTileHeight) {
@@ -317,23 +328,24 @@ class PathFinder(
     }
 
     private fun heuristic(a: Vector2, b: Vector2): Float {
-        return abs(a.x - b.x) + abs(a.y - b.y) // Manhattan distance for grid-based movement
+        return abs(a.x - b.x) + abs(a.y - b.y)
     }
 
     private fun distance(a: Vector2, b: Vector2): Float {
-        return 1f // Grid-based movement, each step has cost 1
+        return 1f
     }
 
     fun renderHighlight(path: Array<Vector2>, tileSize: Float, camera: OrthographicCamera) {
         shapeRenderer.projectionMatrix = camera.combined
         shapeRenderer.begin(ShapeType.Filled)
         shapeRenderer.color = Color.GREEN.cpy().apply { a = 0.5f }
-        for (point in path) {
+        for (i in 0 until path.size) {
+            val point = path[i]
             shapeRenderer.rect(point.x * tileSize, point.y * tileSize, tileSize, tileSize)
         }
         if (path.size > 0) {
             shapeRenderer.color = Color.YELLOW.cpy().apply { a = 0.5f }
-            val dest = path.last()
+            val dest = path[path.size - 1]
             shapeRenderer.rect(dest.x * tileSize, dest.y * tileSize, tileSize, tileSize)
         }
         shapeRenderer.end()

@@ -15,7 +15,7 @@ class MovementManager(
     private val currentPath = Array<Vector2>()
     private var pathRecalcTimer = 0f
     private val pathRecalcInterval = 0.5f
-    private val positionTolerance = 0.2f // Tolerance for snapping to waypoints
+    private val positionTolerance = 0.2f
     private var targetTileX: Int? = null
     private var targetTileY: Int? = null
 
@@ -31,7 +31,6 @@ class MovementManager(
     fun moveToTile(player: Player, tileX: Int, tileY: Int, delta: Float) {
         if (player.isDead()) return
 
-        // Check if the target tile is within the viewport
         val camera = player.cameraManager?.camera
         if (camera != null) {
             val viewportWidth = camera.viewportWidth * camera.zoom
@@ -47,16 +46,14 @@ class MovementManager(
             }
         }
 
-        // Store the target tile for recalculation checks
         targetTileX = tileX
         targetTileY = tileY
 
-        // Only recalculate path if necessary
         pathRecalcTimer -= delta
         if (pathRecalcTimer <= 0f || currentPath.size == 0 || !isPathValid(player, tileX, tileY)) {
             val path = pathFinder.findPath(
                 player.playerTileX, player.playerTileY,
-                tileX, tileY, monsterManager
+                tileX, tileY, monsterManager, monsterManager.getMonsters()
             )
             currentPath.clear()
             if (path.size > 0) {
@@ -71,24 +68,24 @@ class MovementManager(
 
     private fun isPathValid(player: Player, targetX: Int, targetY: Int): Boolean {
         if (currentPath.size == 0 || targetTileX != targetX || targetTileY != targetY) return false
-        val lastWaypoint = currentPath.last()
+        val lastWaypoint = currentPath[currentPath.size - 1]
         return lastWaypoint.x.toInt() == targetX && lastWaypoint.y.toInt() == targetY &&
             mapManager.isWalkable(targetX, targetY) &&
-            !monsterManager.isTileOccupied(targetX, targetY, player)
+            !monsterManager.isTileOccupied(targetX, targetY, player, null, monsterManager.getMonsters())
     }
 
     fun moveInDirection(player: Player, dx: Int, dy: Int, continuous: Boolean): Boolean {
         if (player.isDead()) return false
         if (currentPath.size > 0) {
             Gdx.app.log("MovementManager", "Ignoring DPAD movement (dx=$dx, dy=$dy) due to active path")
-            return false // Prioritize path-based movement over DPAD
+            return false
         }
 
         val newTileX = player.playerTileX + dx
         val newTileY = player.playerTileY + dy
 
         if (newTileX in 0 until mapManager.mapTileWidth && newTileY in 0 until mapManager.mapTileHeight) {
-            if (mapManager.isWalkable(newTileX, newTileY) && !monsterManager.isTileOccupied(newTileX, newTileY, player)) {
+            if (mapManager.isWalkable(newTileX, newTileY) && !monsterManager.isTileOccupied(newTileX, newTileY, player, null, monsterManager.getMonsters())) {
                 Gdx.app.log("MovementManager", "Tile ($newTileX, $newTileY) is walkable and unoccupied")
                 if (continuous) {
                     moveToTile(player, newTileX, newTileY, 0f)
@@ -114,12 +111,11 @@ class MovementManager(
     fun updateContinuousDirection(player: Player, delta: Float) {
         if (player.isDead() || currentPath.size == 0) return
 
-        // Recalculate path only if the current path is invalid
         pathRecalcTimer -= delta
         if (pathRecalcTimer <= 0f && targetTileX != null && targetTileY != null && !isPathValid(player, targetTileX!!, targetTileY!!)) {
             val path = pathFinder.findPath(
                 player.playerTileX, player.playerTileY,
-                targetTileX!!, targetTileY!!, monsterManager
+                targetTileX!!, targetTileY!!, monsterManager, monsterManager.getMonsters()
             )
             currentPath.clear()
             if (path.size > 0) {
@@ -148,8 +144,7 @@ class MovementManager(
                 val newX = player.playerX + moveX
                 val newY = player.playerY + moveY
 
-                // Check the walkability of the target tile
-                if (mapManager.isWalkable(targetTileX, targetTileY) && !monsterManager.isTileOccupied(targetTileX, targetTileY, player)) {
+                if (mapManager.isWalkable(targetTileX, targetTileY) && !monsterManager.isTileOccupied(targetTileX, targetTileY, player, null, monsterManager.getMonsters())) {
                     player.playerX = newX
                     player.playerY = newY
                     player.playerTileX = newX.toInt()
@@ -162,7 +157,6 @@ class MovementManager(
                     return
                 }
 
-                // Snap to target tile if close enough
                 if (abs(player.playerX - target.x) <= positionTolerance && abs(player.playerY - target.y) <= positionTolerance) {
                     player.playerX = target.x
                     player.playerY = target.y
