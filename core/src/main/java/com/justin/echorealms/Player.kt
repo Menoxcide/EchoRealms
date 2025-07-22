@@ -51,7 +51,7 @@ class Player(
     var cameraManager: CameraManager? = null
 
     init {
-        sprite.setSize(tileSize * 1.333f, tileSize * 1.333f)
+        sprite.setSize(tileSize, tileSize) // Set sprite size to match tile size without scaling
     }
 
     fun setMonsterManager(monsterManager: MonsterManager) {
@@ -83,7 +83,7 @@ class Player(
 
         batch.projectionMatrix = camera.combined
         batch.begin()
-        sprite.setPosition(playerX * tileSize - sprite.width / 2, playerY * tileSize - sprite.height / 2)
+        sprite.setPosition(playerX * tileSize, playerY * tileSize) // Align sprite with tile grid
         sprite.draw(batch)
         batch.end()
 
@@ -98,24 +98,25 @@ class Player(
         val barWidth = 30f
         val barHeight = 5f
         val hpWidth = barWidth * hpPercentage
-        val centerX = playerX * tileSize - barWidth / 2f
+        val centerX = playerX * tileSize + (tileSize - barWidth) / 2f // Center HP bar above sprite
+        val barY = playerY * tileSize + tileSize + barHeight // Position HP bar above sprite
         shapeRenderer.color = Color.BLACK
-        shapeRenderer.rect(centerX, (playerY + 1) * tileSize + barHeight, barWidth, barHeight)
+        shapeRenderer.rect(centerX, barY, barWidth, barHeight)
         shapeRenderer.color = hpBarColor
-        shapeRenderer.rect(centerX, (playerY + 1) * tileSize + barHeight, hpWidth, barHeight)
+        shapeRenderer.rect(centerX, barY, hpWidth, barHeight)
         shapeRenderer.end()
 
         shapeRenderer.begin(ShapeType.Line)
         if (isUnderAttackTimer > 0f) {
-            shapeRenderer.color = Color(1f, 0f, 0f, (MathUtils.sin(isUnderAttackTimer * 10f) + 1f) / 2f)
-            shapeRenderer.rect((playerX - 0.5f) * tileSize, (playerY - 0.5f) * tileSize, tileSize, tileSize)
+            shapeRenderer.color = Color.BLACK.cpy().apply { a = (MathUtils.sin(isUnderAttackTimer * 10f) + 1f) / 2f }
+            shapeRenderer.rect(playerX * tileSize, playerY * tileSize, tileSize, tileSize)
         }
         if (criticalHitTimer > 0f) {
             shapeRenderer.color = Color.YELLOW.cpy().apply { a = (MathUtils.sin(criticalHitTimer * 15f) + 1f) / 2f }
-            val pulseWidth = sprite.width * 1.3f
-            val pulseHeight = sprite.height * 1.3f
-            val pulseOffsetX = (pulseWidth - sprite.width) / 2f
-            val pulseOffsetY = (pulseHeight - sprite.height) / 2f
+            val pulseWidth = tileSize * 1.3f
+            val pulseHeight = tileSize * 1.3f
+            val pulseOffsetX = (pulseWidth - tileSize) / 2f
+            val pulseOffsetY = (pulseHeight - tileSize) / 2f
             shapeRenderer.rect((playerX * tileSize) - pulseOffsetX, (playerY * tileSize) - pulseOffsetY, pulseWidth, pulseHeight)
         }
         shapeRenderer.end()

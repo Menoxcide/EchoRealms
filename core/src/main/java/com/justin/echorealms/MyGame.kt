@@ -73,7 +73,11 @@ class MyGame : ApplicationAdapter() {
         assetManager.load("icons/control.png", Texture::class.java)
         assetManager.load("ui/uiskin.json", Skin::class.java)
         assetManager.finishLoading()
-        Gdx.app.log("AssetManager", "Loaded assets: ${assetManager.getAssetNames().joinToString(", ")}")
+        val loadedAssets = assetManager.getAssetNames().joinToString(", ")
+        Gdx.app.log("AssetManager", "Loaded assets: $loadedAssets")
+        if (!assetManager.isLoaded("ui/uiskin.json")) {
+            Gdx.app.error("AssetManager", "Failed to load ui/uiskin.json")
+        }
 
         cameraManager = CameraManager(mapManager.mapPixelWidth, mapManager.mapPixelHeight)
         cameraManager.camera.zoom = cameraManager.minZoom.toFloat() / 1000f
@@ -81,6 +85,7 @@ class MyGame : ApplicationAdapter() {
         uiCamera = OrthographicCamera().apply { setToOrtho(false, Gdx.graphics.width.toFloat(), Gdx.graphics.height.toFloat()) }
 
         val skin = assetManager.get("ui/uiskin.json", Skin::class.java)
+        Gdx.app.log("MyGame", "Skin loaded: ${skin != null}")
         player = Player(mapManager.tileSize, (mapManager.mapTileWidth / 2f), (mapManager.mapTileHeight / 2f), floatingTextManager, null, inventoryManager, levelingSystem, assetManager, mapManager, eventBus)
         player.cameraManager = cameraManager
         monsterManager = MonsterManager(mapManager, player, eventBus, pathFinder, floatingTextManager, assetManager, cameraManager, mapManager)
@@ -95,7 +100,7 @@ class MyGame : ApplicationAdapter() {
         minimap = Minimap(mapManager, player, cameraManager, skin)
         fogOfWar = FogOfWar(mapManager, player)
         worldMap = WorldMap(mapManager, player, skin, fogOfWar)
-        battleList = BattleList(monsterManager, player, skin)
+        battleList = BattleList(monsterManager, player, skin, mapManager)
 
         uiManager = UIManager(player, mapManager, monsterManager, cameraManager, fogOfWar, inventoryManager, assetManager, worldMap, battleList, chatWindow, minimap)
         inputHandler = GameInputHandler(cameraManager.camera, mapManager.tileSize, player, movementManager, minimap, mapManager, monsterManager, battleList, chatWindow, pathFinder, worldMap, uiManager)
@@ -205,8 +210,14 @@ class MyGame : ApplicationAdapter() {
             fogOfWar.render(cameraManager.camera, mapManager.tileSize)
             renderDebugOverlay()
 
-            // Render UI last to ensure it appears on top
+            // Update BattleList content before drawing UI
+            battleList.update(cameraManager.camera)
+
+            // Render UI
             uiManager.draw()
+
+            // Render resize corners after UI draw, in screen space
+            battleList.renderResize(uiCamera)
             updateDpad(Gdx.graphics.deltaTime)
         }
 

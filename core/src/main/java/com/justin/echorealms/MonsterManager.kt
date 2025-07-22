@@ -5,6 +5,7 @@ import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.g2d.Sprite
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.g2d.BitmapFont
+import com.badlogic.gdx.graphics.g2d.GlyphLayout
 import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.utils.Array
 import com.badlogic.gdx.utils.Json
@@ -94,16 +95,29 @@ class MonsterManager(
                         if (statsFile.exists()) {
                             val stats = json.fromJson(MonsterStats::class.java, statsFile.readString())
                             val texturePath = "monster/${categoryDir.name()}/${file.name()}"
-                            val sprite = Sprite(assetManager.get(texturePath, Texture::class.java)).apply {
-                                setSize(width * 1.333f, height * 1.333f)
+                            val texture = assetManager.get(texturePath, Texture::class.java)
+                            // Spawn three instances of each monster
+                            repeat(3) {
+                                val sprite = Sprite(texture).apply {
+                                    setSize(width * 1.333f, height * 1.333f)
+                                }
+                                var spawnX = Random.nextInt(mapManagerRef.mapTileWidth).toFloat()
+                                var spawnY = Random.nextInt(mapManagerRef.mapTileHeight).toFloat()
+                                var attempts = 0
+                                val maxAttempts = 100 // Prevent infinite loops
+                                while (!mapManagerRef.isWalkable(spawnX.toInt(), spawnY.toInt()) ||
+                                    isTileOccupied(spawnX.toInt(), spawnY.toInt(), null, null, monsters)) {
+                                    spawnX = Random.nextInt(mapManagerRef.mapTileWidth).toFloat()
+                                    spawnY = Random.nextInt(mapManagerRef.mapTileHeight).toFloat()
+                                    attempts++
+                                    if (attempts >= maxAttempts) {
+                                        Gdx.app.log("MonsterManager", "Failed to find valid spawn for ${stats.name} after $maxAttempts attempts")
+                                        return@repeat
+                                    }
+                                }
+                                monsters.add(Monster(sprite, spawnX, spawnY, stats, stats.hp, Array<Vector2>(), 1.0f, 0f, 0f, spawnX.toInt(), spawnY.toInt(), null))
+                                Gdx.app.log("MonsterManager", "Spawned ${stats.name} at ($spawnX, $spawnY)")
                             }
-                            var spawnX = Random.nextInt(mapManagerRef.mapTileWidth).toFloat()
-                            var spawnY = Random.nextInt(mapManagerRef.mapTileHeight).toFloat()
-                            while (!mapManagerRef.isWalkable(spawnX.toInt(), spawnY.toInt()) || isTileOccupied(spawnX.toInt(), spawnY.toInt(), null, null, monsters)) {
-                                spawnX = Random.nextInt(mapManagerRef.mapTileWidth).toFloat()
-                                spawnY = Random.nextInt(mapManagerRef.mapTileHeight).toFloat()
-                            }
-                            monsters.add(Monster(sprite, spawnX, spawnY, stats, stats.hp, Array<Vector2>(), 1.0f, 0f, 0f, spawnX.toInt(), spawnY.toInt(), null))
                         }
                     }
                 }
@@ -208,7 +222,8 @@ class MonsterManager(
                 }
             }
 
-            if (monster == player.targetedMonster && dist <= attackRange && (dx == 0f || dy == 0f) && monster.attackCooldown <= 0f && !player.isImmune()) {
+            // Allow monsters to attack if within attack range and aligned, regardless of being targeted
+            if (dist <= attackRange && (dx == 0f || dy == 0f) && monster.attackCooldown <= 0f && !player.isImmune() && !monster.isDead()) {
                 val baseDamage = monster.stats.attack
                 val isCritical = Random.nextFloat() < criticalChance
                 val reducedDamage = (baseDamage * (1f - (player.defense / 100f))) * (if (isCritical) 2f else 1f)
@@ -310,7 +325,12 @@ class MonsterManager(
             val worldY = monster.y * tileSize
             if (viewport.contains(worldX, worldY)) {
                 batch.begin()
-                font.draw(batch, monster.stats.name, worldX - 15f, (monster.y + 1.5f) * tileSize + 10f)
+                // Filter out "(old)" and "(new)" from the monster name (case-insensitive)
+                val filteredName = monster.stats.name.replace(Regex("\\s*\\((?i)(old|new)\\)", RegexOption.IGNORE_CASE), "").trim()
+                val layout = GlyphLayout(font, filteredName)
+                val nameX = worldX + (monster.sprite.width - layout.width) / 2f // Center name
+                val nameY = worldY + monster.sprite.height + layout.height + 20f // Above sprite with padding
+                font.draw(batch, layout, nameX, nameY)
                 batch.end()
 
                 val hpPercentage = monster.currentHp.toFloat() / monster.stats.hp.toFloat()
@@ -322,11 +342,13 @@ class MonsterManager(
                 val barWidth = 30f
                 val barHeight = 5f
                 val hpWidth = barWidth * hpPercentage
-                val centerX = worldX + tileSize / 2f - barWidth / 2f
+                val centerX = worldX + (monster.sprite.width - barWidth) / 2f // Center HP bar
+                val barY = worldY + monster.sprite.height + barHeight + 5f // Below name with 5px padding
                 shapeRenderer.color = Color.BLACK
-                shapeRenderer.rect(centerX, (monster.y + 1) * tileSize + barHeight, barWidth, barHeight)
+                shapeRenderer.rect(centerX, barY, barWidth, barHeight)
                 shapeRenderer.color = hpBarColor
-                shapeRenderer.rect(centerX, (monster.y + 1) * tileSize + barHeight, hpWidth, barHeight)
+                shapeRenderer.rect(centerX, barY, hpWidth, barHeight)
+                Gdx.app.log("MonsterManager", "Rendered ${monster.stats.name} (filtered: $filteredName) HP bar at ($centerX, $barY), name at ($nameX, $nameY)")
             }
         }
         shapeRenderer.end()
