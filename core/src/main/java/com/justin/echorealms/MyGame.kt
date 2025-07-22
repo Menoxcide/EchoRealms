@@ -82,6 +82,7 @@ class MyGame : ApplicationAdapter() {
 
         val skin = assetManager.get("ui/uiskin.json", Skin::class.java)
         player = Player(mapManager.tileSize, (mapManager.mapTileWidth / 2f), (mapManager.mapTileHeight / 2f), floatingTextManager, null, inventoryManager, levelingSystem, assetManager, mapManager, eventBus)
+        player.cameraManager = cameraManager
         monsterManager = MonsterManager(mapManager, player, eventBus, pathFinder, floatingTextManager, assetManager, cameraManager, mapManager)
         monsterManager.loadMonsters()
         player.setMonsterManager(monsterManager)

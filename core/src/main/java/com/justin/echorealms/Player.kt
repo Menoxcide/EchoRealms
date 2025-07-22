@@ -48,6 +48,7 @@ class Player(
     private var isDead = false
     private var immuneTimer = 0f
     private val immuneDuration = 2f
+    var cameraManager: CameraManager? = null
 
     init {
         sprite.setSize(tileSize * 1.333f, tileSize * 1.333f)
