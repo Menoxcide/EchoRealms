@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "101901168840",
+    "project_id": "echo-realms-97240",
+    "storage_bucket": "echo-realms-97240.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:101901168840:android:7751c28ef05c33c0b9b5fd",
+        "android_client_info": {
+          "package_name": "com.justin.echorealms"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "101901168840-l5hn89h46uiksvkgi6vn8ccp0tnebr15.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.justin.echorealms",
+            "certificate_hash": "453872d44d77525a01aa5de24953ec5563f07d5b"
+          }
+        },
+        {
+          "client_id": "101901168840-d3ohihb6h9io79o1r39n8eaurv4fc88v.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCx1mkDsyHQPOOyzvKVpco5B-Gmkkiav1w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "101901168840-d3ohihb6h9io79o1r39n8eaurv4fc88v.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

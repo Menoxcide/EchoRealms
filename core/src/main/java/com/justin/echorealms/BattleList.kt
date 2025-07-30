@@ -6,7 +6,6 @@ import com.badlogic.gdx.scenes.scene2d.ui.Skin
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.ui.Label
 import com.badlogic.gdx.scenes.scene2d.ui.Image
-import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane
 import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.graphics.g2d.Batch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
@@ -30,8 +29,6 @@ class BattleList(
     private val mapManager: MapManager
 ) {
     val table = Table()
-    private val contentTable = Table() // Inner table for scrollable content
-    private lateinit var scrollPane: ScrollPane // ScrollPane to wrap content
     var offsetX = Gdx.graphics.width - 200f - 10f
     var offsetY = Gdx.graphics.height - 200f - 210f
     var size = 200f
@@ -47,17 +44,8 @@ class BattleList(
         table.setPosition(offsetX, offsetY)
         if (skin != null) {
             table.background = skin.getDrawable("window")
-            // Initialize ScrollPane with contentTable
-            scrollPane = ScrollPane(contentTable, skin, "list").apply {
-                setSize(size, size - 20f) // Reserve space for scrollbars
-                setScrollingDisabled(true, false) // Enable vertical scrolling only
-                setScrollbarsVisible(true)
-            }
-            table.add(scrollPane).grow().pad(sidePadding)
         } else {
-            Gdx.app.log("BattleList", "Skin is null, skipping table background and ScrollPane")
-            // Fallback: add contentTable directly without ScrollPane
-            table.add(contentTable).grow().pad(sidePadding)
+            Gdx.app.log("BattleList", "Skin is null, skipping table background")
         }
         table.isVisible = true
         table.top()
@@ -162,9 +150,6 @@ class BattleList(
         offsetX = offsetX.coerceIn(0f, Gdx.graphics.width.toFloat() - size)
         offsetY = offsetY.coerceIn(0f, Gdx.graphics.height.toFloat() - size)
         table.setSize(size, size)
-        if (skin != null) {
-            scrollPane.setSize(size, size - 20f) // Update ScrollPane size
-        }
         table.setPosition(offsetX, offsetY)
         Gdx.app.log("BattleList", "Resized to size ($size, $size), offset ($offsetX, $offsetY)")
     }
@@ -174,8 +159,8 @@ class BattleList(
             Gdx.app.log("BattleList", "Table is not visible")
             return
         }
-        contentTable.clear()
-        Gdx.app.log("BattleList", "Clearing contentTable for update")
+        table.clear()
+        Gdx.app.log("BattleList", "Clearing table for update")
 
         // Calculate viewport in world coordinates
         val viewport = Rectangle(
@@ -212,7 +197,7 @@ class BattleList(
             Gdx.app.log("BattleList", "Skin is null, using default LabelStyle")
         }
 
-        // Add monsters in viewport to the contentTable
+        // Add monsters in viewport to the table
         val monsters = monsterManager.getMonstersInClusters(activeClusters)
         Gdx.app.log("BattleList", "Found ${monsters.size} monsters in active clusters")
         var addedMonsters = 0
@@ -293,19 +278,17 @@ class BattleList(
                         Gdx.app.log("BattleList", "Skin is null, skipping rowTable background for ${monster.stats.name}")
                     }
                 }
-                contentTable.add(rowTable).width(availableWidth).pad(sidePadding).top()
-                contentTable.row()
+                table.add(rowTable).width(availableWidth).pad(sidePadding).top()
+                table.row()
                 addedMonsters++
-                Gdx.app.log("BattleList", "Added monster $filteredName to contentTable, spriteWidth=$spriteWidth, hpBarWidth=$hpBarWidth, labelWidth=$labelWidth")
+                Gdx.app.log("BattleList", "Added monster $filteredName to table, spriteWidth=$spriteWidth, hpBarWidth=$hpBarWidth, labelWidth=$labelWidth")
             }
         }
         if (addedMonsters == 0) {
-            contentTable.add(Label("No monsters visible", labelStyle)).grow().pad(sidePadding).top()
-            contentTable.row()
-            Gdx.app.log("BattleList", "No monsters added to contentTable")
+            table.add(Label("No monsters visible", labelStyle)).grow().pad(sidePadding).top()
+            table.row()
+            Gdx.app.log("BattleList", "No monsters added to table")
         }
-        // Ensure ScrollPane scrolls to the top
-        scrollPane.scrollTo(0f, contentTable.height, 0f, 0f)
     }
 
     fun renderResize(uiCamera: OrthographicCamera) {

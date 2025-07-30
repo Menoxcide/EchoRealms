@@ -29,15 +29,15 @@ class Player(
     var playerTileY = startY.toInt()
     var currentHp = 100
     var maxHp = 100
-    var attack = 1
-    var strength = 1
-    var magic = 1
-    var ranged = 1
-    var prayer = 1
-    var woodcutting = 1
-    var mining = 1
-    var agility = 1
-    var defense = 1
+    private var baseAttack = 1
+    private var baseStrength = 1
+    private var baseMagic = 1
+    private var baseRanged = 1
+    private var basePrayer = 1
+    private var baseWoodcutting = 1
+    private var baseMining = 1
+    private var baseAgility = 1
+    private var baseDefense = 1
     var speed = 2f
     private var monsterManager: MonsterManager? = null
     private val sprite = Sprite(assetManager.get("player/base/human_male.png", Texture::class.java))
@@ -51,7 +51,8 @@ class Player(
     var cameraManager: CameraManager? = null
 
     init {
-        sprite.setSize(tileSize, tileSize) // Set sprite size to match tile size without scaling
+        sprite.setSize(tileSize, tileSize)
+        updateStatsFromLevelingSystem()
     }
 
     fun setMonsterManager(monsterManager: MonsterManager) {
@@ -64,6 +65,39 @@ class Player(
 
     fun isImmune(): Boolean = immuneTimer > 0f
 
+    private fun updateStatsFromLevelingSystem() {
+        baseAttack = levelingSystem.getStat("attack")
+        baseStrength = levelingSystem.getStat("strength")
+        baseMagic = levelingSystem.getStat("magic")
+        baseRanged = levelingSystem.getStat("ranged")
+        basePrayer = levelingSystem.getStat("prayer")
+        baseWoodcutting = levelingSystem.getStat("woodcutting")
+        baseMining = levelingSystem.getStat("mining")
+        baseAgility = levelingSystem.getStat("agility")
+        baseDefense = levelingSystem.getStat("defense")
+        maxHp = levelingSystem.getStat("HP")
+        currentHp = minOf(currentHp, maxHp)
+        Gdx.app.log("Player", "Updated base stats: HP=$maxHp, attack=$baseAttack, strength=$baseStrength, defense=$baseDefense")
+    }
+
+    fun getEffectiveAttack(): Int = baseAttack + inventoryManager.getEffectiveModifiers().getOrDefault("attack", 0)
+
+    fun getEffectiveStrength(): Int = baseStrength + inventoryManager.getEffectiveModifiers().getOrDefault("strength", 0)
+
+    fun getEffectiveMagic(): Int = baseMagic + inventoryManager.getEffectiveModifiers().getOrDefault("magic", 0)
+
+    fun getEffectiveRanged(): Int = baseRanged + inventoryManager.getEffectiveModifiers().getOrDefault("ranged", 0)
+
+    fun getEffectivePrayer(): Int = basePrayer + inventoryManager.getEffectiveModifiers().getOrDefault("prayer", 0)
+
+    fun getEffectiveWoodcutting(): Int = baseWoodcutting + inventoryManager.getEffectiveModifiers().getOrDefault("woodcutting", 0)
+
+    fun getEffectiveMining(): Int = baseMining + inventoryManager.getEffectiveModifiers().getOrDefault("mining", 0)
+
+    fun getEffectiveAgility(): Int = baseAgility + inventoryManager.getEffectiveModifiers().getOrDefault("agility", 0)
+
+    fun getEffectiveDefense(): Int = baseDefense + inventoryManager.getEffectiveModifiers().getOrDefault("defense", 0)
+
     fun update(delta: Float, movementManager: MovementManager) {
         if (isDead) return
 
@@ -74,7 +108,7 @@ class Player(
         if (isUnderAttackTimer < 0f) isUnderAttackTimer = 0f
         if (immuneTimer < 0f) immuneTimer = 0f
 
-        // Update position based on movementManager's path
+        updateStatsFromLevelingSystem()
         movementManager.updateContinuousDirection(this, delta)
     }
 
@@ -83,7 +117,7 @@ class Player(
 
         batch.projectionMatrix = camera.combined
         batch.begin()
-        sprite.setPosition(playerX * tileSize, playerY * tileSize) // Align sprite with tile grid
+        sprite.setPosition(playerX * tileSize, playerY * tileSize)
         sprite.draw(batch)
         batch.end()
 
@@ -98,8 +132,8 @@ class Player(
         val barWidth = 30f
         val barHeight = 5f
         val hpWidth = barWidth * hpPercentage
-        val centerX = playerX * tileSize + (tileSize - barWidth) / 2f // Center HP bar above sprite
-        val barY = playerY * tileSize + tileSize + barHeight // Position HP bar above sprite
+        val centerX = playerX * tileSize + (tileSize - barWidth) / 2f
+        val barY = playerY * tileSize + tileSize + barHeight
         shapeRenderer.color = Color.BLACK
         shapeRenderer.rect(centerX, barY, barWidth, barHeight)
         shapeRenderer.color = hpBarColor

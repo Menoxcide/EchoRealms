@@ -1,3 +1,4 @@
+// core/src/com/justin/echorealms/MyGame.kt
 package com.justin.echorealms
 
 import com.badlogic.gdx.ApplicationAdapter
@@ -71,6 +72,8 @@ class MyGame : ApplicationAdapter() {
         assetManager.load("player/base/human_male.png", Texture::class.java)
         assetManager.load("icons/respawn.png", Texture::class.java)
         assetManager.load("icons/control.png", Texture::class.java)
+        assetManager.load("misc/slot.png", Texture::class.java)
+        assetManager.load("misc/slot_equipped.png", Texture::class.java)
         assetManager.load("ui/uiskin.json", Skin::class.java)
         assetManager.finishLoading()
         val loadedAssets = assetManager.getAssetNames().joinToString(", ")
@@ -79,19 +82,13 @@ class MyGame : ApplicationAdapter() {
             Gdx.app.error("AssetManager", "Failed to load ui/uiskin.json")
         }
 
-        val skin = try {
-            assetManager.get("ui/uiskin.json", Skin::class.java)
-        } catch (e: Exception) {
-            Gdx.app.error("AssetManager", "Error loading skin: ${e.message}")
-            null
-        }
-        Gdx.app.log("MyGame", "Skin loaded: ${skin != null}")
-
         cameraManager = CameraManager(mapManager.mapPixelWidth, mapManager.mapPixelHeight)
         cameraManager.camera.zoom = cameraManager.minZoom.toFloat() / 1000f
 
         uiCamera = OrthographicCamera().apply { setToOrtho(false, Gdx.graphics.width.toFloat(), Gdx.graphics.height.toFloat()) }
 
+        val skin = assetManager.get("ui/uiskin.json", Skin::class.java)
+        Gdx.app.log("MyGame", "Skin loaded: ${skin != null}")
         player = Player(mapManager.tileSize, (mapManager.mapTileWidth / 2f), (mapManager.mapTileHeight / 2f), floatingTextManager, null, inventoryManager, levelingSystem, assetManager, mapManager, eventBus)
         player.cameraManager = cameraManager
         monsterManager = MonsterManager(mapManager, player, eventBus, pathFinder, floatingTextManager, assetManager, cameraManager, mapManager)
@@ -103,9 +100,9 @@ class MyGame : ApplicationAdapter() {
 
         chatWindow = ChatWindow(skin, player)
         combatManager = CombatManager(player, monsterManager, floatingTextManager, inventoryManager, chatWindow)
-        minimap = Minimap(mapManager, player, cameraManager, skin ?: Skin())
         fogOfWar = FogOfWar(mapManager, player)
-        worldMap = WorldMap(mapManager, player, skin ?: Skin(), fogOfWar)
+        minimap = Minimap(mapManager, player, cameraManager, skin, fogOfWar)
+        worldMap = WorldMap(mapManager, player, skin, fogOfWar)
         battleList = BattleList(monsterManager, player, skin, mapManager)
 
         uiManager = UIManager(player, mapManager, monsterManager, cameraManager, fogOfWar, inventoryManager, assetManager, worldMap, battleList, chatWindow, minimap)
@@ -216,13 +213,10 @@ class MyGame : ApplicationAdapter() {
             fogOfWar.render(cameraManager.camera, mapManager.tileSize)
             renderDebugOverlay()
 
-            // Update BattleList content before drawing UI
             battleList.update(cameraManager.camera)
 
-            // Render UI
             uiManager.draw()
 
-            // Render resize corners after UI draw, in screen space
             battleList.renderResize(uiCamera)
             updateDpad(Gdx.graphics.deltaTime)
         }
@@ -230,48 +224,62 @@ class MyGame : ApplicationAdapter() {
         if (player.isDead()) {
             isDeadOverlayVisible = true
             mainViewport.apply()
+            // Draw semi-transparent black overlay
+            shapeRenderer.projectionMatrix = uiCamera.combined
             shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
-            shapeRenderer.color = Color(0f, 0f, 0f, 0.5f)
+            shapeRenderer.color = Color(0f, 0f, 0f, 0.3f) // Reduced alpha for visibility
             shapeRenderer.rect(0f, 0f, Gdx.graphics.width.toFloat(), Gdx.graphics.height.toFloat())
             shapeRenderer.end()
 
+            gameWorldBatch.projectionMatrix = uiCamera.combined
             gameWorldBatch.begin()
             val font = BitmapFont().apply { color = Color.RED; data.setScale(5f) }
             val layout = GlyphLayout(font, "You are dead")
             val textX = (Gdx.graphics.width.toFloat() - layout.width) / 2f
             val textY = (Gdx.graphics.height.toFloat() + layout.height) / 2f + 50f
             font.draw(gameWorldBatch, layout, textX, textY)
+            Gdx.app.log("MyGame", "Rendering 'You are dead' at ($textX, $textY)")
+
             if (assetManager.isLoaded("icons/respawn.png")) {
                 val respawnTexture = assetManager.get("icons/respawn.png", Texture::class.java)
-                val buttonX = (Gdx.graphics.width.toFloat() - respawnTexture.width.toFloat()) / 2f
-                val buttonY = textY - 100f - respawnTexture.height / 2f
-                gameWorldBatch.draw(respawnTexture, buttonX, buttonY, respawnTexture.width.toFloat(), respawnTexture.height.toFloat())
+                val buttonWidth = respawnTexture.width.toFloat() * 2f // Scale up for visibility
+                val buttonHeight = respawnTexture.height.toFloat() * 2f
+                val buttonX = (Gdx.graphics.width.toFloat() - buttonWidth) / 2f
+                val buttonY = textY - 100f - buttonHeight / 2f
+                gameWorldBatch.draw(respawnTexture, buttonX, buttonY, buttonWidth, buttonHeight)
+                Gdx.app.log("MyGame", "Rendering respawn icon at ($buttonX, $buttonY), size ($buttonWidth, $buttonHeight)")
+
                 if (Gdx.input.justTouched()) {
                     val touchX = Gdx.input.x.toFloat()
                     val touchY = Gdx.graphics.height.toFloat() - Gdx.input.y.toFloat()
-                    if (touchX in buttonX..(buttonX + respawnTexture.width) && touchY in buttonY..(buttonY + respawnTexture.height)) {
+                    Gdx.app.log("MyGame", "Touch detected at ($touchX, $touchY)")
+                    if (touchX in buttonX..(buttonX + buttonWidth) && touchY in buttonY..(buttonY + buttonHeight)) {
                         player.respawn()
                         isDeadOverlayVisible = false
-                        Gdx.app.log("MyGame", "Player respawned")
+                        Gdx.app.log("MyGame", "Player respawned via icon click")
                     }
                 }
             } else {
+                Gdx.app.error("MyGame", "Respawn texture not loaded")
                 val respawnLayout = GlyphLayout(font, "Respawn (Image Missing)")
                 val respawnX = (Gdx.graphics.width.toFloat() - respawnLayout.width) / 2f
                 val respawnY = textY - 100f
                 font.draw(gameWorldBatch, respawnLayout, respawnX, respawnY)
+                Gdx.app.log("MyGame", "Rendering fallback respawn text at ($respawnX, $respawnY)")
+
                 if (Gdx.input.justTouched()) {
                     val touchX = Gdx.input.x.toFloat()
                     val touchY = Gdx.graphics.height.toFloat() - Gdx.input.y.toFloat()
+                    Gdx.app.log("MyGame", "Touch detected at ($touchX, $touchY)")
                     if (touchX in respawnX..(respawnX + respawnLayout.width) && touchY in (respawnY - respawnLayout.height)..respawnY) {
                         player.respawn()
                         isDeadOverlayVisible = false
-                        Gdx.app.log("MyGame", "Player respawned")
+                        Gdx.app.log("MyGame", "Player respawned via text click")
                     }
                 }
             }
-            font.dispose()
             gameWorldBatch.end()
+            font.dispose()
         } else {
             isDeadOverlayVisible = false
         }

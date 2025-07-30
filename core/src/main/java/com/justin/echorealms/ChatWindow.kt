@@ -16,18 +16,18 @@ import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType
 
-class ChatWindow(private val skin: Skin?, private val player: Player) {
+class ChatWindow(private val skin: Skin, private val player: Player) {
     val table = Table()
-    private val textField = TextField("", skin ?: Skin(), "default")
+    private val textField = TextField("", skin, "default")
     private val chatArea = Table()
-    private val scrollPane = com.badlogic.gdx.scenes.scene2d.ui.ScrollPane(chatArea, skin ?: Skin(), "list")
-    private val generalButton = TextButton("General", skin ?: Skin(), "default")
-    private val tradeButton = TextButton("Trade", skin ?: Skin(), "default")
-    private val clanButton = TextButton("Clan", skin ?: Skin(), "default")
-    private val combatLogButton = TextButton("Combat Log", skin ?: Skin(), "default")
-    private val minimizeButton = TextButton("-", skin ?: Skin(), "default")
+    private val scrollPane = com.badlogic.gdx.scenes.scene2d.ui.ScrollPane(chatArea, skin, "list")
+    private val generalButton = TextButton("General", skin, "default")
+    private val tradeButton = TextButton("Trade", skin, "default")
+    private val clanButton = TextButton("Clan", skin, "default")
+    private val combatLogButton = TextButton("Combat Log", skin, "default")
+    private val minimizeButton = TextButton("-", skin, "default")
     val minimizedTable = Table()
-    private val minimizedButton = TextButton("Chat/Log", skin ?: Skin(), "default")
+    private val minimizedButton = TextButton("Chat/Log", skin, "default")
     private var currentTab = "General"
     var sizeX = 600f
     var sizeY = 225f
@@ -42,26 +42,27 @@ class ChatWindow(private val skin: Skin?, private val player: Player) {
     private val maxSizeX = minOf(Gdx.graphics.width * 0.5f, 800f)
     private val maxSizeY = 400f
     private val resizeCornerSize = 20f
+    private val buttonHeight = 40f // Base height for buttons
+    private val padding = 5f // Base padding
 
     init {
         table.setFillParent(false)
         table.setSize(sizeX, sizeY)
         table.setPosition(offsetX, offsetY)
-        if (skin != null) {
-            table.background = skin.getDrawable("window")
-        } else {
-            Gdx.app.log("ChatWindow", "Skin is null, skipping table background")
-        }
+        table.background = skin.getDrawable("window")
         table.isVisible = true
 
+        // Scale chat area to fill most of the window height, leaving space for buttons and text field
         chatArea.bottom().left()
         scrollPane.setScrollingDisabled(true, false)
-        scrollPane.setSize(sizeX, sizeY - 50f)
+        scrollPane.setSize(sizeX - 2 * padding, sizeY - 2 * buttonHeight - 2 * padding) // Adjusted for buttons and text field
         scrollPane.setScrollbarsVisible(true)
-        table.add(scrollPane).colspan(4).growX().height(sizeY - 50f).pad(5f)
-        table.add(minimizeButton).size(30f, 30f).top().right().pad(5f)
+        table.add(scrollPane).colspan(4).growX().height(sizeY - 2 * buttonHeight - 2 * padding).pad(padding)
+        table.add(minimizeButton).size(30f, 30f).top().right().pad(padding)
         table.row()
 
+        // Scale buttons proportionally to window width
+        val buttonWidth = (sizeX - 6 * padding) / 4 // 4 buttons with padding between
         generalButton.addListener(object : ClickListener() {
             override fun clicked(event: InputEvent?, x: Float, y: Float) {
                 currentTab = "General"
@@ -102,13 +103,14 @@ class ChatWindow(private val skin: Skin?, private val player: Player) {
             }
         })
 
-        table.add(generalButton).pad(5f)
-        table.add(tradeButton).pad(5f)
-        table.add(clanButton).pad(5f)
-        table.add(combatLogButton).pad(5f)
+        table.add(generalButton).width(buttonWidth).height(buttonHeight).pad(padding)
+        table.add(tradeButton).width(buttonWidth).height(buttonHeight).pad(padding)
+        table.add(clanButton).width(buttonWidth).height(buttonHeight).pad(padding)
+        table.add(combatLogButton).width(buttonWidth).height(buttonHeight).pad(padding)
         table.row()
 
-        textField.setSize(sizeX, 40f)
+        // Scale text field to full width with fixed height
+        textField.setSize(sizeX - 2 * padding, buttonHeight) // Full width minus padding
         textField.setTextFieldListener { _, c ->
             if (c == '\n' && textField.text.isNotEmpty()) {
                 val message = "${player.playerTileX},${player.playerTileY}: ${textField.text}"
@@ -117,15 +119,12 @@ class ChatWindow(private val skin: Skin?, private val player: Player) {
                 Gdx.app.log("ChatWindow", "Message sent: $message")
             }
         }
-        table.add(textField).colspan(4).width(sizeX).height(40f).pad(5f)
+        table.add(textField).colspan(4).width(sizeX - 2 * padding).height(buttonHeight).pad(padding)
 
+        // Scale minimized table and button
         minimizedTable.setSize(minimizedSize.x, minimizedSize.y)
         minimizedTable.setPosition(minimizedOffsetX, minimizedOffsetY)
-        if (skin != null) {
-            minimizedTable.background = skin.getDrawable("window")
-        } else {
-            Gdx.app.log("ChatWindow", "Skin is null, skipping minimizedTable background")
-        }
+        minimizedTable.background = skin.getDrawable("window")
         minimizedTable.add(minimizedButton).size(minimizedSize.x, minimizedSize.y)
         minimizedTable.isVisible = false
         minimizedButton.addListener(object : ClickListener() {
@@ -165,23 +164,10 @@ class ChatWindow(private val skin: Skin?, private val player: Player) {
     }
 
     fun addMessage(message: String, tab: String) {
-        val label = Label("[$tab] $message", skin ?: Skin(), "default").apply {
-            setWrap(true)
-            setAlignment(Align.left)
-        }
-        val messageTable = Table().apply {
-            if (skin != null) {
-                try {
-                    background = skin.getDrawable("window")
-                } catch (e: Exception) {
-                    Gdx.app.log("ChatWindow", "Failed to load 'window' drawable: ${e.message}")
-                }
-            } else {
-                Gdx.app.log("ChatWindow", "Skin is null, skipping message background")
-            }
-            add(label).width(sizeX - 30f).growX().pad(5f).left()
-        }
-        chatArea.add(messageTable).width(sizeX - 30f).growX().pad(5f).left()
+        val label = Label("[$tab] $message", skin, "default")
+        label.setWrap(true)
+        label.setAlignment(Align.left)
+        chatArea.add(label).width(sizeX - 4 * padding - 30f).pad(padding).left() // Adjusted width for padding
         chatArea.row()
         scrollPane.scrollTo(0f, 0f, 0f, 0f)
         scrollPane.layout()
@@ -291,9 +277,14 @@ class ChatWindow(private val skin: Skin?, private val player: Player) {
         offsetX = offsetX.coerceIn(0f, Gdx.graphics.width - sizeX)
         offsetY = offsetY.coerceIn(0f, Gdx.graphics.height - sizeY)
         table.setSize(sizeX, sizeY)
-        scrollPane.setSize(sizeX, sizeY - 50f)
+        scrollPane.setSize(sizeX - 2 * padding, sizeY - 2 * buttonHeight - 2 * padding) // Update scrollPane size
+        val buttonWidth = (sizeX - 6 * padding) / 4 // Recalculate button width
+        generalButton.width = buttonWidth
+        tradeButton.width = buttonWidth
+        clanButton.width = buttonWidth
+        combatLogButton.width = buttonWidth
+        textField.setSize(sizeX - 2 * padding, buttonHeight) // Update text field size
         table.setPosition(offsetX, offsetY)
-        textField.setSize(sizeX, 40f)
         Gdx.app.log("ChatWindow", "Resized to size ($sizeX, $sizeY), offset ($offsetX, $offsetY)")
     }
 

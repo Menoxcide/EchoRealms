@@ -43,6 +43,8 @@ class UIManager(
     private lateinit var dpadToggleButton: TextButton
     private lateinit var dpadLockButton: TextButton
     private lateinit var touchpad: Touchpad
+    private lateinit var slotTexture: Texture
+    private lateinit var slotEquippedTexture: Texture
     private var isInventoryOpen = false
     private var isCharacterSheetOpen = false
     private var isWorldMapOpen = false
@@ -56,19 +58,21 @@ class UIManager(
     }
 
     private fun initializeUI() {
-        // Add WorldMap, BattleList, ChatWindow, and Minimap to UIManager's stage
+        // Load slot textures
+        slotTexture = assetManager.get("misc/slot.png", Texture::class.java)
+        slotEquippedTexture = assetManager.get("misc/slot_equipped.png", Texture::class.java)
+
         stage.addActor(worldMap.window)
         stage.addActor(battleList.table)
         stage.addActor(chatWindow.table)
         stage.addActor(chatWindow.minimizedTable)
         stage.addActor(minimap.table)
 
-        // Inventory Window
         inventoryWindow = Window("Inventory", skin, "default").apply {
             setSize(600f, 800f)
             setPosition((Gdx.graphics.width - width) / 2f, (Gdx.graphics.height - height) / 2f)
             isMovable = true
-            color = Color(1f, 1f, 1f, 0.5f)
+            color = Color(1f, 1f, 1f, 1f) // Fully opaque
             isVisible = false
             addListener(object : DragListener() {
                 override fun drag(event: InputEvent?, x: Float, y: Float, pointer: Int) {
@@ -82,26 +86,30 @@ class UIManager(
         }
         stage.addActor(inventoryWindow)
 
-        // Character Window
         characterWindow = Window("Character Sheet", skin, "default").apply {
             setSize(800f, 1000f)
             setPosition((Gdx.graphics.width - width) / 2f, (Gdx.graphics.height - height) / 2f)
-            isMovable = true
-            color = Color(1f, 1f, 1f, 0.5f)
+            isMovable = true // Ensure movable
+            color = Color(1f, 1f, 1f, 1f) // Fully opaque
             isVisible = false
             addListener(object : DragListener() {
+                override fun dragStart(event: InputEvent?, x: Float, y: Float, pointer: Int) {
+                    Gdx.app.log("UIManager", "Started dragging character window at ($x, $y)")
+                }
                 override fun drag(event: InputEvent?, x: Float, y: Float, pointer: Int) {
                     val newX = (x + this@apply.x - width / 2).coerceIn(0f, Gdx.graphics.width.toFloat() - width)
                     val newY = (y + this@apply.y - height / 2).coerceIn(0f, Gdx.graphics.height.toFloat() - height)
                     setPosition(newX, newY)
                     Gdx.app.log("UIManager", "Character window dragged to ($newX, $newY)")
                 }
+                override fun dragStop(event: InputEvent?, x: Float, y: Float, pointer: Int) {
+                    Gdx.app.log("UIManager", "Stopped dragging character window at ($x, $y)")
+                }
             })
             add(buildCharacterTable()).grow().pad(10f)
         }
         stage.addActor(characterWindow)
 
-        // Inventory Icon
         inventoryIcon = Image(assetManager.get("icons/inventory.png", Texture::class.java)).apply {
             color = Color(1f, 1f, 1f, 0.5f)
             setPosition(10f, Gdx.graphics.height.toFloat() - 200f)
@@ -128,7 +136,6 @@ class UIManager(
         }
         stage.addActor(inventoryIcon)
 
-        // Character Icon
         characterIcon = Image(assetManager.get("icons/character.png", Texture::class.java)).apply {
             color = Color(1f, 1f, 1f, 0.5f)
             setPosition(230f, Gdx.graphics.height.toFloat() - 200f)
@@ -140,6 +147,8 @@ class UIManager(
                     color.a = if (isCharacterSheetOpen) 1f else 0.5f
                     if (isCharacterSheetOpen) {
                         characterWindow.setPosition((Gdx.graphics.width.toFloat() - characterWindow.width) / 2f, (Gdx.graphics.height.toFloat() - characterWindow.height) / 2f)
+                        characterWindow.clear()
+                        characterWindow.add(buildCharacterTable()).grow().pad(10f)
                     }
                     Gdx.app.log("UIManager", "Character icon clicked, isCharacterSheetOpen: $isCharacterSheetOpen")
                 }
@@ -155,7 +164,6 @@ class UIManager(
         }
         stage.addActor(characterIcon)
 
-        // World Map Button
         worldMapButton = TextButton("World Map", skin, "default").apply {
             color = Color(1f, 1f, 1f, 0.5f)
             setPosition(450f, Gdx.graphics.height.toFloat() - 200f)
@@ -171,7 +179,6 @@ class UIManager(
         }
         stage.addActor(worldMapButton)
 
-        // Debug Toggle Button
         debugToggleButton = TextButton("Toggle Debug", skin, "default").apply {
             setPosition(20f, Gdx.graphics.height.toFloat() - 150f)
             setSize(200f, 60f)
@@ -185,7 +192,6 @@ class UIManager(
         }
         stage.addActor(debugToggleButton)
 
-        // Custom Touchpad Style with icons/control.png
         val controlTexture = assetManager.get("icons/control.png", Texture::class.java)
         val touchpadStyle = Touchpad.TouchpadStyle().apply {
             background = TextureRegionDrawable(controlTexture)
@@ -209,7 +215,6 @@ class UIManager(
         }
         stage.addActor(touchpad)
 
-        // Dpad Toggle Button
         dpadToggleButton = TextButton("Toggle DPAD", skin, "default").apply {
             setPosition(20f, Gdx.graphics.height.toFloat() - 50f)
             setSize(200f, 60f)
@@ -223,7 +228,6 @@ class UIManager(
         }
         stage.addActor(dpadToggleButton)
 
-        // Dpad Lock Button
         dpadLockButton = TextButton("Lock DPAD", skin, "default").apply {
             setPosition(20f, Gdx.graphics.height.toFloat() - 100f)
             setSize(200f, 60f)
@@ -242,34 +246,214 @@ class UIManager(
         val table = Table(skin)
         table.add(Image(assetManager.get("icons/inventory.png", Texture::class.java))).size(100f).pad(10f)
         table.row()
-        val itemsLabel = Label("Items: ${inventoryManager.getItems().joinToString(", ")}", skin, "default")
-        table.add(itemsLabel).growX().pad(10f)
+        val items = inventoryManager.getItems()
+        for (item in items) {
+            val itemTable = Table(skin)
+            itemTable.add(Label(item.name, skin, "default")).pad(5f).left()
+            if (item.isEquippable) {
+                val equipButton = TextButton("Equip", skin, "default")
+                equipButton.addListener(object : ClickListener() {
+                    override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                        inventoryManager.equipItem(item)
+                        inventoryWindow.clear()
+                        inventoryWindow.add(buildInventoryTable()).grow().pad(10f)
+                        characterWindow.clear()
+                        characterWindow.add(buildCharacterTable()).grow().pad(10f)
+                        Gdx.app.log("UIManager", "Equipped ${item.name} to ${item.slotType}")
+                    }
+                })
+                itemTable.add(equipButton).pad(5f).right()
+            }
+            table.add(itemTable).growX().pad(5f)
+            table.row()
+        }
+        val equippedItems = inventoryManager.getEffectiveModifiers()
+        if (equippedItems.isNotEmpty()) {
+            table.add(Label("Equipped:", skin, "default")).growX().pad(10f)
+            table.row()
+            listOf("weapon", "left_hand", "helmet", "chest", "legs", "feet", "ring", "amulet").forEach { slot ->
+                val equipped = inventoryManager.getEquippedItem(slot)
+                if (equipped != null) {
+                    table.add(Label("$slot: ${equipped.name}", skin, "default")).growX().pad(5f).left()
+                    table.row()
+                }
+            }
+        }
         return table
     }
 
     private fun buildCharacterTable(): Table {
         val table = Table(skin)
-        table.add(Image(assetManager.get("icons/character.png", Texture::class.java))).size(100f).pad(10f)
+        // Character icon and equipment slots
+        val equipmentTable = Table(skin)
+        equipmentTable.add(Label("Equipment:", skin, "default")).colspan(3).pad(10f).center()
+        equipmentTable.row()
+        // Helmet slot
+        equipmentTable.add(Label("Helmet", skin, "default")).colspan(3).padBottom(5f)
+        equipmentTable.row()
+        val helmetSlot = Image(if (inventoryManager.getEquippedItem("helmet") != null) slotEquippedTexture else slotTexture)
+        helmetSlot.addListener(object : ClickListener() {
+            override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                if (inventoryManager.getEquippedItem("helmet") != null) {
+                    inventoryManager.unequipItem("helmet")
+                    characterWindow.clear()
+                    characterWindow.add(buildCharacterTable()).grow().pad(10f)
+                    inventoryWindow.clear()
+                    inventoryWindow.add(buildInventoryTable()).grow().pad(10f)
+                    Gdx.app.log("UIManager", "Unequipped helmet")
+                }
+            }
+        })
+        equipmentTable.add(helmetSlot).size(50f).pad(10f).colspan(3)
+        equipmentTable.row()
+        // Character icon with left and right hand slots
+        equipmentTable.add(Label("Left Hand", skin, "default")).padBottom(5f)
+        equipmentTable.add().size(100f).pad(10f) // Spacer for character icon
+        equipmentTable.add(Label("Right Hand", skin, "default")).padBottom(5f)
+        equipmentTable.row()
+        val leftHandSlot = Image(if (inventoryManager.getEquippedItem("left_hand") != null) slotEquippedTexture else slotTexture)
+        leftHandSlot.addListener(object : ClickListener() {
+            override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                if (inventoryManager.getEquippedItem("left_hand") != null) {
+                    inventoryManager.unequipItem("left_hand")
+                    characterWindow.clear()
+                    characterWindow.add(buildCharacterTable()).grow().pad(10f)
+                    inventoryWindow.clear()
+                    inventoryWindow.add(buildInventoryTable()).grow().pad(10f)
+                    Gdx.app.log("UIManager", "Unequipped left hand")
+                }
+            }
+        })
+        equipmentTable.add(leftHandSlot).size(50f).pad(10f)
+        equipmentTable.add(Image(assetManager.get("icons/character.png", Texture::class.java))).size(100f).pad(10f)
+        val weaponSlot = Image(if (inventoryManager.getEquippedItem("weapon") != null) slotEquippedTexture else slotTexture)
+        weaponSlot.addListener(object : ClickListener() {
+            override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                if (inventoryManager.getEquippedItem("weapon") != null) {
+                    inventoryManager.unequipItem("weapon")
+                    characterWindow.clear()
+                    characterWindow.add(buildCharacterTable()).grow().pad(10f)
+                    inventoryWindow.clear()
+                    inventoryWindow.add(buildInventoryTable()).grow().pad(10f)
+                    Gdx.app.log("UIManager", "Unequipped weapon")
+                }
+            }
+        })
+        equipmentTable.add(weaponSlot).size(50f).pad(10f)
+        equipmentTable.row()
+        // Amulet and ring slots
+        equipmentTable.add(Label("Amulet", skin, "default")).padBottom(5f)
+        equipmentTable.add(Label("Ring", skin, "default")).padBottom(5f).colspan(2)
+        equipmentTable.row()
+        val amuletSlot = Image(if (inventoryManager.getEquippedItem("amulet") != null) slotEquippedTexture else slotTexture)
+        amuletSlot.addListener(object : ClickListener() {
+            override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                if (inventoryManager.getEquippedItem("amulet") != null) {
+                    inventoryManager.unequipItem("amulet")
+                    characterWindow.clear()
+                    characterWindow.add(buildCharacterTable()).grow().pad(10f)
+                    inventoryWindow.clear()
+                    inventoryWindow.add(buildInventoryTable()).grow().pad(10f)
+                    Gdx.app.log("UIManager", "Unequipped amulet")
+                }
+            }
+        })
+        equipmentTable.add(amuletSlot).size(50f).pad(10f)
+        val ringSlot = Image(if (inventoryManager.getEquippedItem("ring") != null) slotEquippedTexture else slotTexture)
+        ringSlot.addListener(object : ClickListener() {
+            override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                if (inventoryManager.getEquippedItem("ring") != null) {
+                    inventoryManager.unequipItem("ring")
+                    characterWindow.clear()
+                    characterWindow.add(buildCharacterTable()).grow().pad(10f)
+                    inventoryWindow.clear()
+                    inventoryWindow.add(buildInventoryTable()).grow().pad(10f)
+                    Gdx.app.log("UIManager", "Unequipped ring")
+                }
+            }
+        })
+        equipmentTable.add(ringSlot).size(50f).pad(10f).colspan(2)
+        equipmentTable.row()
+        // Chest slot
+        equipmentTable.add(Label("Chest", skin, "default")).colspan(3).padBottom(5f)
+        equipmentTable.row()
+        val chestSlot = Image(if (inventoryManager.getEquippedItem("chest") != null) slotEquippedTexture else slotTexture)
+        chestSlot.addListener(object : ClickListener() {
+            override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                if (inventoryManager.getEquippedItem("chest") != null) {
+                    inventoryManager.unequipItem("chest")
+                    characterWindow.clear()
+                    characterWindow.add(buildCharacterTable()).grow().pad(10f)
+                    inventoryWindow.clear()
+                    inventoryWindow.add(buildInventoryTable()).grow().pad(10f)
+                    Gdx.app.log("UIManager", "Unequipped chest")
+                }
+            }
+        })
+        equipmentTable.add(chestSlot).size(50f).pad(10f).colspan(3)
+        equipmentTable.row()
+        // Legs and feet slots
+        equipmentTable.add(Label("Legs", skin, "default")).colspan(3).padBottom(5f)
+        equipmentTable.row()
+        val legsSlot = Image(if (inventoryManager.getEquippedItem("legs") != null) slotEquippedTexture else slotTexture)
+        legsSlot.addListener(object : ClickListener() {
+            override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                if (inventoryManager.getEquippedItem("legs") != null) {
+                    inventoryManager.unequipItem("legs")
+                    characterWindow.clear()
+                    characterWindow.add(buildCharacterTable()).grow().pad(10f)
+                    inventoryWindow.clear()
+                    inventoryWindow.add(buildInventoryTable()).grow().pad(10f)
+                    Gdx.app.log("UIManager", "Unequipped legs")
+                }
+            }
+        })
+        equipmentTable.add(legsSlot).size(50f).pad(10f).colspan(3)
+        equipmentTable.row()
+        equipmentTable.add(Label("Feet", skin, "default")).colspan(3).padBottom(5f)
+        equipmentTable.row()
+        val feetSlot = Image(if (inventoryManager.getEquippedItem("feet") != null) slotEquippedTexture else slotTexture)
+        feetSlot.addListener(object : ClickListener() {
+            override fun clicked(event: InputEvent?, x: Float, y: Float) {
+                if (inventoryManager.getEquippedItem("feet") != null) {
+                    inventoryManager.unequipItem("feet")
+                    characterWindow.clear()
+                    characterWindow.add(buildCharacterTable()).grow().pad(10f)
+                    inventoryWindow.clear()
+                    inventoryWindow.add(buildInventoryTable()).grow().pad(10f)
+                    Gdx.app.log("UIManager", "Unequipped feet")
+                }
+            }
+        })
+        equipmentTable.add(feetSlot).size(50f).pad(10f).colspan(3)
+
+        table.add(equipmentTable).pad(10f)
         table.row()
+
+        // Stats (using effective stats where applicable)
         table.add(Label("Stats:", skin, "default")).pad(10f).left()
         table.row()
         table.add(Label("HP: ${player.currentHp}/${player.maxHp} (Lvl ${player.getLevelingSystem().getLevel("HP")})", skin, "default")).pad(10f).left()
         table.row()
-        table.add(Label("Str: ${player.strength} (Lvl ${player.getLevelingSystem().getLevel("strength")})", skin, "default")).pad(10f).left()
+        table.add(Label("Att: ${player.getEffectiveAttack()} (Lvl ${player.getLevelingSystem().getLevel("attack")})", skin, "default")).pad(10f).left()
         table.row()
-        table.add(Label("Mag: ${player.magic} (Lvl ${player.getLevelingSystem().getLevel("magic")})", skin, "default")).pad(10f).left()
+        table.add(Label("Str: ${player.getEffectiveStrength()} (Lvl ${player.getLevelingSystem().getLevel("strength")})", skin, "default")).pad(10f).left()
         table.row()
-        table.add(Label("Rng: ${player.ranged} (Lvl ${player.getLevelingSystem().getLevel("ranged")})", skin, "default")).pad(10f).left()
+        table.add(Label("Mag: ${player.getEffectiveMagic()} (Lvl ${player.getLevelingSystem().getLevel("magic")})", skin, "default")).pad(10f).left()
         table.row()
-        table.add(Label("Pry: ${player.prayer} (Lvl ${player.getLevelingSystem().getLevel("prayer")})", skin, "default")).pad(10f).left()
+        table.add(Label("Rng: ${player.getEffectiveRanged()} (Lvl ${player.getLevelingSystem().getLevel("ranged")})", skin, "default")).pad(10f).left()
         table.row()
-        table.add(Label("Wdc: ${player.woodcutting} (Lvl ${player.getLevelingSystem().getLevel("woodcutting")})", skin, "default")).pad(10f).left()
+        table.add(Label("Pry: ${player.getEffectivePrayer()} (Lvl ${player.getLevelingSystem().getLevel("prayer")})", skin, "default")).pad(10f).left()
         table.row()
-        table.add(Label("Min: ${player.mining} (Lvl ${player.getLevelingSystem().getLevel("mining")})", skin, "default")).pad(10f).left()
+        table.add(Label("Wdc: ${player.getEffectiveWoodcutting()} (Lvl ${player.getLevelingSystem().getLevel("woodcutting")})", skin, "default")).pad(10f).left()
         table.row()
-        table.add(Label("Agl: ${player.agility} (Lvl ${player.getLevelingSystem().getLevel("agility")})", skin, "default")).pad(10f).left()
+        table.add(Label("Min: ${player.getEffectiveMining()} (Lvl ${player.getLevelingSystem().getLevel("mining")})", skin, "default")).pad(10f).left()
         table.row()
-        table.add(Label("Def: ${player.defense} (Lvl ${player.getLevelingSystem().getLevel("defense")})", skin, "default")).pad(10f).left()
+        table.add(Label("Agl: ${player.getEffectiveAgility()} (Lvl ${player.getLevelingSystem().getLevel("agility")})", skin, "default")).pad(10f).left()
+        table.row()
+        table.add(Label("Def: ${player.getEffectiveDefense()} (Lvl ${player.getLevelingSystem().getLevel("defense")})", skin, "default")).pad(10f).left()
+        table.row()
+        Gdx.app.log("UIManager", "Built character table with HP: ${player.currentHp}/${player.maxHp}, Att: ${player.getEffectiveAttack()}, Str: ${player.getEffectiveStrength()}, Def: ${player.getEffectiveDefense()}")
         return table
     }
 

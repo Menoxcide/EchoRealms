@@ -16,7 +16,8 @@ class Minimap(
     private val mapManager: MapManager,
     private val player: Player,
     private val cameraManager: CameraManager,
-    private val skin: Skin
+    private val skin: Skin,
+    private val fogOfWar: FogOfWar
 ) {
     val table = Table()
     var offsetX = Gdx.graphics.width - 200f - 10f
@@ -46,15 +47,22 @@ class Minimap(
                 batch?.end()
                 shapeRenderer.projectionMatrix = stage.camera.combined
                 shapeRenderer.begin(ShapeType.Filled)
-                val tileSize = size / mapManager.mapTileWidth
+                val tileSize = minOf(size / mapManager.mapTileWidth, size / mapManager.mapTileHeight)
                 for (x in 0 until mapManager.mapTileWidth) {
                     for (y in 0 until mapManager.mapTileHeight) {
-                        shapeRenderer.color = if (mapManager.isWalkable(x, y)) Color.GREEN else Color.GRAY
-                        shapeRenderer.rect(offsetX + x * tileSize, offsetY + y * tileSize, tileSize, tileSize)
+                        if (fogOfWar.isExplored(x, y)) {
+                            shapeRenderer.color = if (mapManager.isWalkable(x, y)) Color.GREEN else Color.GRAY
+                            shapeRenderer.rect(offsetX + x * tileSize, offsetY + y * tileSize, tileSize, tileSize)
+                        } else {
+                            shapeRenderer.color = Color(0f, 0f, 0f, 0.8f)
+                            shapeRenderer.rect(offsetX + x * tileSize, offsetY + y * tileSize, tileSize, tileSize)
+                        }
                     }
                 }
+                val playerX = player.playerTileX * tileSize
+                val playerY = player.playerTileY * tileSize
                 shapeRenderer.color = Color.RED
-                shapeRenderer.rect(offsetX + player.playerTileX * tileSize, offsetY + player.playerTileY * tileSize, tileSize, tileSize)
+                shapeRenderer.rect(offsetX + playerX, offsetY + playerY, tileSize * 1.5f, tileSize * 1.5f)
                 shapeRenderer.end()
                 batch?.begin()
             }

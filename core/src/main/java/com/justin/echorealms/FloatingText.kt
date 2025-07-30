@@ -12,7 +12,6 @@ class FloatingTextManager {
     private val font = BitmapFont()
 
     init {
-        font.color = Color.RED
         font.data.setScale(1.5f) // Slightly larger for visibility
     }
 
@@ -35,7 +34,13 @@ class FloatingTextManager {
         batch.projectionMatrix = camera.combined
         batch.begin()
         texts.forEach { ft ->
-            font.color = if (ft.isCritical) Color.YELLOW else Color.RED
+            font.color = if (ft.isCritical) {
+                Color.YELLOW
+            } else if (ft.text.startsWith("+")) {
+                Color.GREEN // Use green for HP regeneration text
+            } else {
+                Color.RED
+            }
             font.color.a = ft.lifetime
             font.draw(batch, ft.text, ft.x * tileSize, (ft.y * tileSize) + ft.offsetY + 50f)
         }

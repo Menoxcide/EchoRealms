@@ -48,8 +48,10 @@ class MonsterManager(
     private val lodDistance = 20
     val positionTolerance = 0.2f
     private val targetProximityTolerance = 1.5f
-    internal val clusterSize = 16 // Cluster size in tiles (16x16)
+    internal val clusterSize = 16
     private val clusters = mutableMapOf<Pair<Int, Int>, Array<Monster>>()
+    private var globalAttackCooldown = 0f
+    private val globalAttackTick = 1f
 
     init {
         font.color = Color.WHITE
@@ -132,12 +134,10 @@ class MonsterManager(
                             val stats = json.fromJson(MonsterStats::class.java, statsFile.readString())
                             val texturePath = "monster/${categoryDir.name()}/${file.name()}"
                             val texture = assetManager.get(texturePath, Texture::class.java)
-                            // Spawn three instances of each monster
                             repeat(3) {
                                 val sprite = Sprite(texture).apply {
                                     setSize(width * 1.333f, height * 1.333f)
                                 }
-                                // Select a random cluster
                                 val clusterX = Random.nextInt(clusterCountX)
                                 val clusterY = Random.nextInt(clusterCountY)
                                 var spawnX: Float
@@ -171,6 +171,9 @@ class MonsterManager(
     fun update(delta: Float) {
         if (player.isDead()) return
 
+        globalAttackCooldown -= delta
+        if (globalAttackCooldown < 0f) globalAttackCooldown = 0f
+
         val camera = cameraManager.camera
         val zoom = camera.zoom
         val viewport = Rectangle(
@@ -180,7 +183,6 @@ class MonsterManager(
             camera.viewportHeight * zoom
         )
 
-        // Get clusters intersecting the viewport
         val minClusterX = max(0, ((viewport.x / mapManagerRef.tileSize) / clusterSize).toInt())
         val maxClusterX = min((mapManagerRef.mapTileWidth / clusterSize).toInt(), ((viewport.x + viewport.width) / mapManagerRef.tileSize / clusterSize).toInt())
         val minClusterY = max(0, ((viewport.y / mapManagerRef.tileSize) / clusterSize).toInt())
@@ -199,10 +201,8 @@ class MonsterManager(
             coarseTimer = coarseRecalcTimer
         }
 
-        // Create a snapshot of monsters in active clusters
         val monsterSnapshot = getMonstersInClusters(activeClusters)
 
-        // Collect monsters to update
         val monstersToUpdate = mutableListOf<Monster>()
         for (monster in monsterSnapshot) {
             val worldX = monster.x * mapManagerRef.tileSize
@@ -217,7 +217,6 @@ class MonsterManager(
             }
         }
 
-        // Update monsters
         val monstersToDespawn = mutableListOf<Monster>()
         var pathfindingCount = 0
         for (monster in monstersToUpdate) {
@@ -278,18 +277,18 @@ class MonsterManager(
                 }
             }
 
-            // Allow monsters to attack if within attack range and aligned, regardless of being targeted
-            if (dist <= attackRange && (dx == 0f || dy == 0f) && monster.attackCooldown <= 0f && !player.isImmune() && !monster.isDead()) {
+            if (dist <= attackRange && (dx == 0f || dy == 0f) && globalAttackCooldown <= 0f && !player.isImmune() && !monster.isDead()) {
                 val baseDamage = monster.stats.attack
                 val isCritical = Random.nextFloat() < criticalChance
-                val reducedDamage = (baseDamage * (1f - (player.defense / 100f))) * (if (isCritical) 2f else 1f)
+                val reducedDamage = (baseDamage * (1f - (player.getEffectiveDefense() / 100f))) * (if (isCritical) 2f else 1f)
                 val finalDamage = (reducedDamage * (0.8f + Random.nextFloat() * 0.4f)).toInt().coerceAtLeast(0)
                 player.currentHp = max(0, player.currentHp - finalDamage)
                 player.criticalHitTimer = if (isCritical) 0.5f else 0f
                 floatingTextManager.addText(if (isCritical) "-$finalDamage (CRITICAL!)" else "-$finalDamage", player.playerX, player.playerY, isCritical)
                 player.isUnderAttackTimer = 1f
-                monster.attackCooldown = 1f
+                globalAttackCooldown = globalAttackTick
                 player.getLevelingSystem().addExperience("defense", monster.stats.exp / 2)
+                Gdx.app.log("MonsterManager", "${monster.stats.name} dealt $finalDamage${if (isCritical) " (CRITICAL!)" else ""} damage to player")
                 if (player.currentHp <= 0) {
                     Gdx.app.log("MonsterManager", "${monster.stats.name} at (${monster.x}, ${monster.y}) killed the player")
                     player.die()
@@ -360,7 +359,6 @@ class MonsterManager(
             camera.viewportHeight * camera.zoom
         )
 
-        // Get clusters intersecting the viewport
         val minClusterX = max(0, ((viewport.x / tileSize) / clusterSize).toInt())
         val maxClusterX = min((mapManagerRef.mapTileWidth / clusterSize).toInt(), ((viewport.x + viewport.width) / tileSize / clusterSize).toInt())
         val minClusterY = max(0, ((viewport.y / tileSize) / clusterSize).toInt())
@@ -391,11 +389,10 @@ class MonsterManager(
             val worldY = monster.y * tileSize
             if (viewport.contains(worldX, worldY)) {
                 batch.begin()
-                // Filter out "(old)" and "(new)" from the monster name
                 val filteredName = monster.stats.name.replace(Regex("\\s*\\((?i)(old|new)\\)", RegexOption.IGNORE_CASE), "").trim()
                 val layout = GlyphLayout(font, filteredName)
-                val nameX = worldX + (monster.sprite.width - layout.width) / 2f // Center name
-                val nameY = worldY + monster.sprite.height + layout.height + 15f // Above sprite with padding
+                val nameX = worldX + (monster.sprite.width - layout.width) / 2f
+                val nameY = worldY + monster.sprite.height + layout.height + 15f
                 font.draw(batch, layout, nameX, nameY)
                 batch.end()
 
@@ -408,8 +405,8 @@ class MonsterManager(
                 val barWidth = 30f
                 val barHeight = 5f
                 val hpWidth = barWidth * hpPercentage
-                val centerX = worldX + (monster.sprite.width - barWidth) / 2f // Center HP bar
-                val barY = worldY + monster.sprite.height + barHeight + 5f // Below name with 5px padding
+                val centerX = worldX + (monster.sprite.width - barWidth) / 2f
+                val barY = worldY + monster.sprite.height + barHeight + 5f
                 shapeRenderer.color = Color.BLACK
                 shapeRenderer.rect(centerX, barY, barWidth, barHeight)
                 shapeRenderer.color = hpBarColor
